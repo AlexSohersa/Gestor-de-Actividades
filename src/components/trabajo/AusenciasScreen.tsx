@@ -224,16 +224,21 @@ export function AusenciasScreen({
    * Contra qué se compara lo disponible: los días QUE HAY en los bloques
    * liberados, no lo disponible más lo usado.
    *
-   * Sumar los usados daba un total inventado. Los días que alguien tomó en
-   * marzo ya salieron de su bloque —`dias` es lo que queda—, así que
-   * volverlos a sumar cuenta dos veces: quien tenía 9 disponibles y 11
-   * vacaciones este año aparecía con "9 de 20", como si le hubieran otorgado
-   * veinte días.
+   * `dias` es lo que QUEDA y `usados` lo ya tomado de ese mismo bloque, así
+   * que juntos dan lo que se otorgó: "10 de 12" para quien tenía doce días
+   * liberados y tomó dos. Es el número que enseña el gestor oficial.
+   *
+   * Antes se sumaba el contador de vacaciones del año, que incluye las
+   * importadas de la hoja —ya restadas de `dias`—: eso las contaba dos veces
+   * y daba totales inventados como "9 de 20".
    *
    * Los bloques que aún no se liberan quedan fuera a propósito: se anuncian
    * aparte, porque no se pueden tomar todavía.
    */
-  const totalOtorgado = saldo.bloques.reduce((n, b) => n + b.dias, 0);
+  const totalOtorgado = saldo.bloques.reduce(
+    (n, b) => n + b.dias + b.usados,
+    0,
+  );
   const CIRCUNFERENCIA = 2 * Math.PI * 40;
   const anilloUsado =
     totalOtorgado > 0 ? (disponibles / totalOtorgado) * CIRCUNFERENCIA : 0;
