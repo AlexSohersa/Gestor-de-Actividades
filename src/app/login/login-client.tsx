@@ -1,6 +1,6 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { entrarConGoogle, reconectarGoogle } from "./actions";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { GestorLogo } from "@/components/brand/GestorLogo";
@@ -202,7 +202,9 @@ export default function LoginClient() {
           <button
             onClick={() => {
               setEntrando(true);
-              signIn("google", { callbackUrl: destino });
+              // La acción del servidor decide si hace falta la pantalla de
+              // permisos: solo la ve quien todavía no concedió los suyos.
+              void entrarConGoogle(destino);
             }}
             disabled={entrando}
             className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl font-semibold text-sm transition-all duration-150 active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100"
@@ -222,6 +224,36 @@ export default function LoginClient() {
                 Continuar con Google
               </>
             )}
+          </button>
+
+          {/*
+            Volver a pedir permisos.
+            Google caduca los enlaces de la foto de perfil y puede revocar el
+            token que permite escribir en las hojas. Cuando eso pasa no hay
+            error visible: la foto sale como iniciales y lo que se aprueba deja
+            de subir. Esto lo arregla sin tener que borrar cookies a mano.
+          */}
+          <button
+            type="button"
+            onClick={() => {
+              setEntrando(true);
+              void reconectarGoogle(destino);
+            }}
+            disabled={entrando}
+            className="w-full mt-3 py-2.5 px-4 rounded-xl text-xs transition-colors duration-150 disabled:opacity-60"
+            style={{
+              background: "transparent",
+              color: "var(--soh-text-muted)",
+              border: "1px solid var(--soh-border)",
+            }}
+            onMouseEnter={(e) => {
+              if (!entrando) e.currentTarget.style.color = "var(--soh-text)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--soh-text-muted)";
+            }}
+          >
+            Volver a conceder permisos de Google
           </button>
 
           <div className="flex items-center gap-3 my-6">

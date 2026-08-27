@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import { cookies } from "next/headers";
 import { db } from "@/lib/db/client";
 import { authConfig } from "./config";
 import { esCorreoPermitido } from "./dominio";
@@ -50,12 +51,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { id: persona.id },
           data: { googleRefresco: account.refresh_token },
         });
+
+        /*
+         * Marca en el navegador que esta persona ya concedió los permisos.
+         *
+         * El login no sabe quién eres antes de entrar, así que no puede mirar
+         * el padrón para decidir si enseñar la pantalla de consentimiento.
+         * Con esta cookie, la siguiente entrada es directa.
+         */
+        (await cookies()).set("soh.google-ok", "1", {
+          maxAge: 60 * 60 * 24 * 365,
+          httpOnly: true,
+          sameSite: "lax",
+          secure: process.env.NODE_ENV === "production",
+          path: "/",
+        });
       }
 
-      // La foto de Google, si la persona no tiene una propia en el padrón.
+      /*
+       * La foto de Google, SIEMPRE que llegue una.
+       *
+       * Antes solo se guardaba si el padrón no tenía ninguna, y esas
+       * direcciones caducan: quien entró hace semanas se quedaba con un enlace
+       * muerto y veía sus iniciales en vez de su foto. Refrescarla en cada
+       * entrada la mantiene viva sin coste.
+       */
       if (user.image) {
-        await db.persona.updateMany({
-          where: { id: persona.id, foto: null },
+        await db.persona.update({
+          where: { id: persona.id },
           data: { foto: user.image },
         });
       }
