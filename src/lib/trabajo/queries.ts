@@ -219,7 +219,13 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
     null,
   );
 
-  // Lo que el origen ya tenía descontado, para poder informarlo.
+  /*
+   * Lo ya descontado en los propios bloques.
+   *
+   * Incluye tanto lo que traía el origen al migrar como lo aprobado desde
+   * aquí, porque aprobar incrementa esa misma columna. Sirve para ENSEÑAR el
+   * histórico de días tomados; para el saldo vivo se usa bloque a bloque.
+   */
   const usadosAntesDelCorte = saldos.reduce((n, b) => n + Number(b.usados), 0);
 
   // La jornada de la persona manda: `diasHabiles` reparte por ocho horas
@@ -252,6 +258,9 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
   const conFecha = saldos.map((s) => ({
     periodo: s.periodo,
     dias: Number(s.dias),
+    // Lo que YA se gastó de este bloque, apuntado en la propia fila cuando se
+    // aprobaron unas vacaciones. Sin esto el bloque parecía intacto.
+    gastado: Number(s.usados),
     libera: s.liberadoEn ? deFechaDia(s.liberadoEn) : null,
     vence: s.venceEn ? deFechaDia(s.venceEn) : null,
   }));
@@ -277,15 +286,27 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
       (a.vence ?? "9999-12-31").localeCompare(b.vence ?? "9999-12-31"),
     );
 
-  // Se van gastando los usados contra los bloques, del que vence antes al que
-  // vence después: así se aprovechan primero los que están por caducar.
+  /*
+   * Lo consumido de cada bloque: lo que ya lleva apuntado MÁS lo que aún no
+   * está reflejado ahí.
+   *
+   * Aprobar unas vacaciones incrementa `usados` en la fila del bloque. Al
+   * calcular los disponibles hay que restarlo: mirar solo `dias` hacía que un
+   * bloque de 10 con 6 gastados se viera entero, y la persona seguía teniendo
+   * 10 días disponibles después de tomarse 6.
+   *
+   * Lo que se reparte encima es solo `usados` —lo posterior al corte, que
+   * todavía no está en la columna—, del bloque que vence antes al que vence
+   * después: así se aprovechan primero los que están por caducar.
+   */
   let porRepartir = usados;
   const bloques = disponiblesBloques.map((b) => {
-    const gastado = Math.min(b.dias, porRepartir);
-    porRepartir = Math.round((porRepartir - gastado) * 100) / 100;
+    const libre = Math.max(0, b.dias - b.gastado);
+    const extra = Math.min(libre, porRepartir);
+    porRepartir = Math.round((porRepartir - extra) * 100) / 100;
     return {
       dias: b.dias,
-      usados: Math.round(gastado * 100) / 100,
+      usados: Math.round((b.gastado + extra) * 100) / 100,
       vence: b.vence ?? "",
       periodo: String(b.periodo),
     };
