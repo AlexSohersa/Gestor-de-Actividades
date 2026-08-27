@@ -69,17 +69,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       /*
-       * La foto de Google, SIEMPRE que llegue una.
+       * La foto de perfil, pedida a Google en cada entrada.
        *
-       * Antes solo se guardaba si el padrón no tenía ninguna, y esas
-       * direcciones caducan: quien entró hace semanas se quedaba con un enlace
-       * muerto y veía sus iniciales en vez de su foto. Refrescarla en cada
-       * entrada la mantiene viva sin coste.
+       * La que trae `user.image` caduca: al probarla, las direcciones
+       * guardadas de dos personas distintas devolvían el MISMO monigote gris
+       * de 1 124 bytes. Google no da error, simplemente sirve el avatar por
+       * defecto, así que el fallo no se ve —y quien tenía la foto en la caché
+       * del navegador la seguía viendo mientras los demás no.
+       *
+       * Pedida con el token de la persona, llega la de verdad (unos 8 KB).
+       * Se guarda solo si vino algo: si Google no responde, se conserva la
+       * anterior en vez de dejar a alguien sin ninguna.
        */
-      if (user.image) {
+      const foto = account.access_token
+        ? await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+            headers: { Authorization: `Bearer ${account.access_token}` },
+            signal: AbortSignal.timeout(8000),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j) => (j as { picture?: string } | null)?.picture ?? null)
+            .catch(() => null)
+        : null;
+
+      if (foto ?? user.image) {
         await db.persona.update({
           where: { id: persona.id },
-          data: { foto: user.image },
+          data: { foto: foto ?? user.image },
         });
       }
 

@@ -17,7 +17,7 @@ export default async function AusenciasPage() {
   const persona = await exigirSeccion("ausencias");
   const puedo = puedeAprobar(persona);
 
-  const [{ lista, usados }, saldo, tipos, aprobadores, pendientes] =
+  const [{ lista }, saldo, tipos, aprobadores, pendientes] =
     await Promise.all([
       loadAusencias(persona.id),
       saldoVacaciones(persona.id, persona.horasDia),
@@ -63,7 +63,7 @@ export default async function AusenciasPage() {
   return (
     <AusenciasScreen
       lista={lista}
-      usados={usados || saldo.usados}
+      usados={saldo.usados}
       disponibles={saldo.disponibles}
       saldo={saldo}
       liberaciones={saldo.liberaciones}

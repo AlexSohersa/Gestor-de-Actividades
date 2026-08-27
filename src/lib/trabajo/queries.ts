@@ -197,42 +197,39 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
         fechaFin: true,
         medioDia: true,
         horas: true,
+        // Para distinguir lo importado de la hoja —ya descontado— de lo
+        // aprobado aquí, que todavía no lo está.
+        sheetSync: true,
       },
     }),
   ]);
 
   /*
-   * Los días ya consumidos, sin contarlos dos veces.
+   * Los días ya tomados, según la hoja oficial.
    *
-   * `dias` de cada bloque es lo que QUEDA, no lo otorgado: el origen ya
-   * descontó las ausencias anteriores al corte. Restarlas otra vez a partir de
-   * las ausencias importadas dejaba a la gente con menos días de los que tiene
-   * —y afectaba a 20 de las 29 personas con saldo—.
+   * `usados` de cada bloque viene de ahí: es lo que esa persona lleva tomado
+   * de ese periodo, y `dias` ya trae lo que le queda. Los dos juntos dan lo
+   * otorgado, que es contra lo que se compara el anillo: "10 de 12".
    *
-   * Así que solo cuentan las ausencias POSTERIORES al corte de cada bloque:
-   * las que se piden desde esta herramienta y todavía no están reflejadas.
-   * Un bloque sin corte (dado de alta aquí) cuenta todo, que es lo correcto.
+   * NO se recalcula desde las ausencias importadas. Hacerlo las contaría dos
+   * veces —ya están descontadas en `dias`— y con 38 días de historial daba
+   * saldos negativos absurdos.
    */
-  const corte = saldos.reduce<Date | null>(
-    (mayor, b) =>
-      b.corte && (!mayor || b.corte > mayor) ? b.corte : mayor,
-    null,
-  );
+  const tomadosEnBloques = saldos.reduce((n, b) => n + Number(b.usados), 0);
 
   /*
-   * Lo ya descontado en los propios bloques.
+   * Lo aprobado DESDE ESTA HERRAMIENTA y que la hoja todavía no refleja.
    *
-   * Incluye tanto lo que traía el origen al migrar como lo aprobado desde
-   * aquí, porque aprobar incrementa esa misma columna. Sirve para ENSEÑAR el
-   * histórico de días tomados; para el saldo vivo se usa bloque a bloque.
+   * Es lo único que hay que descontar encima: la hoja se actualiza sola con
+   * lo que sube, así que en cuanto la sincronización pase, este número vuelve
+   * a cero y el saldo lo lleva `usados`.
+   *
+   * La jornada de la persona manda: `diasHabiles` reparte por ocho horas
+   * porque así era en el portal, y aquí hay jornadas de 4 y 5.
    */
-  const usadosAntesDelCorte = saldos.reduce((n, b) => n + Number(b.usados), 0);
-
-  // La jornada de la persona manda: `diasHabiles` reparte por ocho horas
-  // porque así era en el portal, y aquí hay jornadas de 4 y 5.
-  const usadosDesdeElCorte = aprobadas
+  const usados = aprobadas
     .filter((a) => a.tipo.toUpperCase().includes("VACACION"))
-    .filter((a) => corte === null || a.fechaInicio > corte)
+    .filter((a) => a.sheetSync !== "hoja")
     .reduce((n, a) => {
       const dias = diasHabiles({
         startDate: a.fechaInicio,
@@ -245,19 +242,7 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
       return n + (a.medioDia && jornada !== 8 ? (dias * 8) / jornada : dias);
     }, 0);
 
-  // Lo que se resta del saldo vivo es solo lo nuevo; lo anterior ya está
-  // reflejado en `dias`.
-  const usados = usadosDesdeElCorte;
-  /*
-   * Lo que se ENSEÑA como "días tomados".
-   *
-   * Lo apuntado en los bloques más lo aprobado después del corte. NO se
-   * cuentan las vacaciones importadas de la hoja: esas ya vienen restadas de
-   * `dias`, y sumarlas otra vez inflaba el total —alguien con 9 disponibles y
-   * 11 vacaciones viejas aparecía con "9 de 20", como si le hubieran otorgado
-   * veinte días.
-   */
-  const usadosMostrados = usadosAntesDelCorte + usadosDesdeElCorte;
+  const usadosMostrados = tomadosEnBloques + usados;
 
   // "Hoy" en México, no en UTC: a media tarde el servidor ya estaría en el día
   // siguiente y un bloque que se libera mañana contaría como disponible.
@@ -295,32 +280,32 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
     );
 
   /*
-   * Lo consumido de cada bloque: lo que ya lleva apuntado MÁS lo que aún no
-   * está reflejado ahí.
+   * `dias` YA es lo que queda del bloque.
    *
-   * Aprobar unas vacaciones incrementa `usados` en la fila del bloque. Al
-   * calcular los disponibles hay que restarlo: mirar solo `dias` hacía que un
-   * bloque de 10 con 6 gastados se viera entero, y la persona seguía teniendo
-   * 10 días disponibles después de tomarse 6.
+   * Viene de la hoja oficial, que descuenta sola lo tomado. Restar `usados`
+   * encima lo contaría dos veces: a quien tenía 13 disponibles y 38 días
+   * tomados en su historial le salían -34.
    *
-   * Lo que se reparte encima es solo `usados` —lo posterior al corte, que
-   * todavía no está en la columna—, del bloque que vence antes al que vence
-   * después: así se aprovechan primero los que están por caducar.
+   * `usados` se conserva porque es lo que permite enseñar "10 de 12" —lo
+   * disponible sobre lo liberado— en vez de "10 de 10".
+   *
+   * Lo aprobado desde aquí (`usados`, calculado arriba) se resta encima, del
+   * bloque que vence antes al que vence después: así se aprovechan primero los
+   * que están por caducar, como hace el gestor de siempre.
    */
   let porRepartir = usados;
   const bloques = disponiblesBloques.map((b) => {
-    const libre = Math.max(0, b.dias - b.gastado);
-    const extra = Math.min(libre, porRepartir);
-    porRepartir = Math.round((porRepartir - extra) * 100) / 100;
+    const gastado = Math.min(b.dias, porRepartir);
+    porRepartir = Math.round((porRepartir - gastado) * 100) / 100;
     return {
-      dias: b.dias,
-      usados: Math.round((b.gastado + extra) * 100) / 100,
+      dias: Math.round((b.dias - gastado) * 100) / 100,
+      usados: Math.round((b.gastado + gastado) * 100) / 100,
       vence: b.vence ?? "",
       periodo: String(b.periodo),
     };
   });
 
-  const disponibles = bloques.reduce((n, b) => n + (b.dias - b.usados), 0);
+  const disponibles = bloques.reduce((n, b) => n + b.dias, 0);
 
   // Lo que todavía no se libera se anuncia aparte: son días que la persona ya
   // tiene ganados y conviene que sepa cuándo podrá tomarlos, pero que NO se
