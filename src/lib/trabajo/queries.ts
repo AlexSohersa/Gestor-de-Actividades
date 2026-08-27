@@ -248,7 +248,15 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
   // Lo que se resta del saldo vivo es solo lo nuevo; lo anterior ya está
   // reflejado en `dias`.
   const usados = usadosDesdeElCorte;
-  // Lo que se ENSEÑA como "días tomados" es el total de su historia.
+  /*
+   * Lo que se ENSEÑA como "días tomados".
+   *
+   * Lo apuntado en los bloques más lo aprobado después del corte. NO se
+   * cuentan las vacaciones importadas de la hoja: esas ya vienen restadas de
+   * `dias`, y sumarlas otra vez inflaba el total —alguien con 9 disponibles y
+   * 11 vacaciones viejas aparecía con "9 de 20", como si le hubieran otorgado
+   * veinte días.
+   */
   const usadosMostrados = usadosAntesDelCorte + usadosDesdeElCorte;
 
   // "Hoy" en México, no en UTC: a media tarde el servidor ya estaría en el día

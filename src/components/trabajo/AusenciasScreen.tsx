@@ -220,9 +220,20 @@ export function AusenciasScreen({
   };
 
   /* ------------------------------ el anillo ---------------------------- */
-  // El total otorgado es lo disponible más lo ya usado: sin eso el anillo no
-  // tendría contra qué comparar.
-  const totalOtorgado = disponibles + usados;
+  /*
+   * Contra qué se compara lo disponible: los días QUE HAY en los bloques
+   * liberados, no lo disponible más lo usado.
+   *
+   * Sumar los usados daba un total inventado. Los días que alguien tomó en
+   * marzo ya salieron de su bloque —`dias` es lo que queda—, así que
+   * volverlos a sumar cuenta dos veces: quien tenía 9 disponibles y 11
+   * vacaciones este año aparecía con "9 de 20", como si le hubieran otorgado
+   * veinte días.
+   *
+   * Los bloques que aún no se liberan quedan fuera a propósito: se anuncian
+   * aparte, porque no se pueden tomar todavía.
+   */
+  const totalOtorgado = saldo.bloques.reduce((n, b) => n + b.dias, 0);
   const CIRCUNFERENCIA = 2 * Math.PI * 40;
   const anilloUsado =
     totalOtorgado > 0 ? (disponibles / totalOtorgado) * CIRCUNFERENCIA : 0;
