@@ -1,0 +1,255 @@
+/* =========================================================================
+   CAPA VIBRANTE — rama `diseno-vibrante`
+   =========================================================================
+   Explora un lenguaje más alegre SIN salirse de la identidad SOHERSA.
+
+   La paleta oficial (manual, sección 06 · Color) tiene cuatro colores:
+
+       #0E1C33  Azul Sohersa     fondo principal, superficies oscuras
+       #0A1526  Azul profundo    badges, profundidad y sombra
+       #37D35B  Verde Sohersa    color de marca, glifos y acentos
+       #57E06A  Verde señal      botones de acción y estados activos
+
+   Todo lo de aquí se deriva de esos cuatro. Donde hace falta distinguir
+   varias cosas a la vez (los KPIs, las áreas), no se inventan colores
+   nuevos: se recorre el eje VERDE → AZUL en pasos intermedios, que es un
+   camino que la marca ya contiene.
+
+   La única excepción es el ámbar de alerta. No está en el manual, pero un
+   sistema de indicadores necesita señalar "esto requiere atención", y usar
+   verde para eso sería mentir. Se mantiene al mínimo y desaturado.
+   ========================================================================= */
+
+:root {
+  /* --- Los cuatro oficiales -------------------------------------------- */
+  --v-green: #37d35b; /* Verde Sohersa */
+  --v-signal: #57e06a; /* Verde señal */
+  --v-navy: #0e1c33; /* Azul Sohersa */
+  --v-deep: #0a1526; /* Azul profundo */
+
+  /* --- Verde, en tres pasos para construir volumen -------------------- */
+  --v-green-lt: #7ceb96;
+  --v-green-dk: #1fa843;
+  --v-green-dp: #16803a; /* texto sobre fondo claro: contraste AA */
+
+  /* --- El eje verde→azul ----------------------------------------------
+     Cuatro escalones que van del verde de marca al azul de marca. Sirven
+     para diferenciar KPIs y áreas sin traer colores ajenos.             */
+  --v-teal: #14b393; /* verde-azulado */
+  --v-teal-lt: #5fd8c0;
+  --v-teal-dk: #0c8570;
+
+  --v-sea: #1d92a8; /* azulado medio */
+  --v-sea-lt: #63c2d2;
+  --v-sea-dk: #136b7d;
+
+  --v-sky: #2f6fb5; /* azul claro de marca */
+  --v-sky-lt: #7aa9dd;
+  --v-sky-dk: #1f4e84;
+
+  --v-ink-blue: #24406e; /* azul profundo, aún dentro del eje */
+  --v-ink-blue-lt: #6b83ad;
+  --v-ink-blue-dk: #16294a;
+
+  /* --- Alerta (única fuera del manual, deliberada) --------------------
+     Un indicador tiene que poder decir "atiende esto". El manual no da un
+     color para eso, así que se usa un ámbar contenido, nunca decorativo. */
+  --v-alert: #c98a1a;
+  --v-alert-lt: #e8b962;
+  --v-alert-dk: #96650c;
+
+  /* --- Superficies -----------------------------------------------------
+     "Niebla" del manual, con un punto más de azul para que el verde y el
+     navy respiren encima.                                                */
+  --v-bg: #eef2f8;
+  --v-card: #ffffff;
+  --v-ink: #0e1c33;
+  --v-ink-2: #475569;
+  --v-ink-3: #8695a6;
+
+  /* --- Forma ------------------------------------------------------------ */
+  --v-r-sm: 14px;
+  --v-r: 20px;
+  --v-r-lg: 28px;
+  --v-r-xl: 36px;
+
+  /* --- Sombras ---------------------------------------------------------
+     Tintadas de Azul Sohersa, no gris neutro: incluso la sombra es marca. */
+  --v-lift: 0 1px 2px rgba(14, 28, 51, 0.05), 0 8px 22px rgba(14, 28, 51, 0.07);
+  --v-lift-lg: 0 2px 4px rgba(14, 28, 51, 0.06), 0 20px 44px rgba(14, 28, 51, 0.13);
+}
+
+/* ------------------------------------------------------------- bloques -- */
+
+.v-block {
+  position: relative;
+  border-radius: var(--v-r-lg);
+  padding: 22px 22px 0;
+  overflow: hidden;
+  color: #fff;
+  isolation: isolate;
+  background: linear-gradient(160deg, var(--v-tint-lt), var(--v-tint));
+  box-shadow: 0 12px 30px var(--v-tint-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+}
+
+.v-block:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 24px 50px var(--v-tint-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.v-block::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    118deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0) 42%
+  );
+  pointer-events: none;
+}
+
+.v-card {
+  position: relative;
+  background: var(--v-card);
+  border-radius: var(--v-r);
+  box-shadow: var(--v-lift);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.v-card-i:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--v-lift-lg);
+}
+
+/* ------------------------------------------------------------ spotlight --
+   Resplandor que sigue al cursor y se enciende al entrar en pantalla.
+
+   --mx/--my  posición del cursor, la escribe Spotlight.tsx en cada frame
+   --lit      0/1 según el IntersectionObserver: al hacer scroll, las
+              tarjetas se van encendiendo en cascada
+
+   El degradado vive en un ::before con z-index negativo para quedar debajo
+   del contenido pero dentro del recorte de la tarjeta.                     */
+
+.v-spot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    320px circle at var(--mx, 50%) var(--my, 50%),
+    var(--v-spot-glow, rgba(55, 211, 91, 0.16)),
+    transparent 64%
+  );
+  /* En reposo se ve tenue; al entrar en pantalla sube; al pasar el cursor,
+     al máximo. Multiplicar por --lit hace que fuera del viewport esté apagada. */
+  opacity: calc(var(--lit, 0) * 0.55);
+  transition: opacity 0.45s ease;
+}
+
+.v-spot:hover::before {
+  opacity: calc(var(--lit, 1) * 1);
+  transition: opacity 0.22s ease;
+}
+
+/* Filo superior del color del producto: aparece al pasar el cursor. */
+.v-spot::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--v-spot-accent, var(--v-green)),
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.v-spot:hover::after {
+  opacity: 1;
+}
+
+/* El badge de marca se inclina y se ilumina con la tarjeta. */
+.v-spot .soh-badge {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+}
+.v-spot:hover .soh-badge {
+  transform: rotate(3deg);
+  box-shadow: 0 0 0 4px rgba(55, 211, 91, 0.18), 0 8px 20px rgba(55, 211, 91, 0.3);
+}
+
+/* ---------------------------------------------------------- movimiento -- */
+
+@keyframes v-hover3d {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1.5deg);
+  }
+}
+
+.v-hover3d {
+  animation: v-hover3d 5s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes v-bob {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(14px, -20px) scale(1.06);
+  }
+}
+
+@keyframes v-pop-in {
+  0% {
+    opacity: 0;
+    transform: translateY(22px) scale(0.95);
+  }
+  62% {
+    transform: translateY(-4px) scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.v-pop {
+  animation: v-pop-in 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v-hover3d,
+  .v-pop {
+    animation: none !important;
+  }
+  .v-block:hover,
+  .v-card-i:hover {
+    transform: none;
+  }
+  /* El resplandor se queda fijo y tenue: sigue dando profundidad, pero ya no
+     persigue al cursor ni se enciende de golpe al hacer scroll. */
+  .v-spot::before {
+    opacity: 0.4 !important;
+    transition: none;
+  }
+  .v-spot:hover .soh-badge {
+    transform: none;
+  }
+}

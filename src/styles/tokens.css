@@ -1,0 +1,128 @@
+/* =========================================================================
+   SISTEMA DE IDENTIDAD SOHERSA — fuente única de verdad
+   =========================================================================
+   Valores tomados del manual oficial "Identidad Transformación Digital
+   SOHERSA · Sistema de identidad v1" (sección 06 · Color y 07 · Tipografía).
+   Los nombres de las variables se conservan de Deal Engine y Evaluación 360
+   para que este archivo se pueda copiar a esos repos sin tocar su código.
+
+   Regla central del manual, sección 01:
+     "El contenedor nunca cambia: lo único que varía entre productos es el
+      glifo interior."
+
+   Uso:
+     - CSS plano / estilos inline:  var(--soh-green)
+     - Utilidades Tailwind:         bg-soh-green, text-soh-text-2, ...
+   ========================================================================= */
+
+:root {
+  /* --- Chrome oscuro (sidebar, topbar, paneles de marca) ---------------
+     "Azul Sohersa"  #0E1C33 — fondo principal, superficies oscuras
+     "Azul profundo" #0A1526 — badges, profundidad y sombra              */
+  --soh-navy: #0e1c33;
+  --soh-surface: #132743;
+  --soh-hover: #1a3050;
+  --soh-tile: #0a1526;
+  --soh-deep: #0b1729; /* fin del degradado del hero */
+  --soh-dk-border: rgba(255, 255, 255, 0.08);
+
+  /* --- Acento: verde de marca -----------------------------------------
+     "Verde Sohersa" #37D35B — color de marca, glifos y acentos
+     "Verde señal"   #57E06A — botones de acción y estados activos       */
+  --soh-green: #37d35b;
+  --soh-green-signal: #57e06a;
+  --soh-green-hover: #37b551;
+  --soh-green-deep: #08331a;
+  /* Verde del cotizador. Se conserva porque Deal Engine y Evaluación 360
+     lo usan hoy; el canónico para lo nuevo es --soh-green. */
+  --soh-green-legacy: #5bbf21;
+  --soh-amber: #f0c860;
+
+  /* --- Superficies claras (contenido) ---------------------------------
+     "Niebla" #F3F6FA — fondo claro de interfaz                          */
+  --soh-bg: #f3f6fa;
+  --soh-card: #ffffff;
+  --soh-elev: #e9eef3;
+  --soh-bg-hover: #eaeff5;
+  --soh-border: #e2e8f0;
+  --soh-border-light: #edf1f6;
+
+  /* --- Texto sobre fondo claro ----------------------------------------
+     "Pizarra" #475569 — texto secundario                                */
+  --soh-text: #0e1c33;
+  --soh-text-2: #475569;
+  --soh-text-3: #8695a6;
+
+  /* --- Texto sobre chrome oscuro -------------------------------------- */
+  --soh-dk-2: #c6d2e0;
+  --soh-dk-3: #9fb0c4;
+
+  /* --- Semánticos ------------------------------------------------------ */
+  --soh-success: #37d35b;
+  --soh-warn: #e69500;
+  --soh-error: #e0364f;
+  --soh-info: #2563eb;
+
+  /* --- Forma -----------------------------------------------------------
+     El manual usa radios muy generosos: el badge maestro es 34px sobre
+     128px, o sea 26.5% del lado. La escala respeta esa proporción.       */
+  --soh-r: 0.75rem; /* 12px — inputs, botones */
+  --soh-r-sm: 0.5rem; /* 8px  — chips, items de nav */
+  --soh-r-lg: 18px; /* tarjetas */
+  --soh-r-xl: 26px; /* paneles y superficies grandes */
+  --soh-r-pill: 999px;
+  /* Proporción del badge de marca: radio = lado × 0.265 */
+  --soh-badge-ratio: 0.265;
+
+  --soh-shadow: 0 1px 2px rgba(10, 26, 60, 0.04), 0 4px 16px rgba(10, 26, 60, 0.06);
+  --soh-shadow-lg: 0 8px 30px rgba(10, 26, 60, 0.12);
+  --soh-shadow-xl: 0 24px 70px rgba(10, 26, 60, 0.35);
+
+  /* --- Movimiento ------------------------------------------------------ */
+  --soh-t: 0.15s; /* transición estándar en toda la plataforma */
+
+  /* --- Colores de producto --------------------------------------------
+     Los mismos acentos que Deal Engine usa en su hub, para que una persona
+     reconozca cada herramienta por su color antes de leer el nombre.
+     Nota: el manual dibuja TODOS los glifos en Verde Sohersa; estos acentos
+     son de interfaz (chips, tintes de tarjeta), no de marca.             */
+  --soh-app-deal: #37d35b; /* Verde Sohersa */
+  --soh-app-hub: #1d92a8;
+  --soh-app-eval: #2f6fb5;
+  --soh-app-lens: #14b393;
+  --soh-app-bim: #24406e;
+
+  /* --- Textura del hero -------------------------------------------------
+     Retícula de puntos de 26px sobre el degradado navy. Es la firma del
+     manual: aparece en la portada y en las secciones oscuras.            */
+  --soh-dots: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.045) 1px,
+    transparent 0
+  );
+  --soh-dots-size: 26px 26px;
+  --soh-hero: linear-gradient(180deg, #0e1c33, #0b1729);
+
+  /* --- Paleta semántica de datos --------------------------------------
+     Cada KPI lleva un par (texto oscuro, pastel de fondo). Tomados literal
+     de leads-client.tsx y oportunidades-client.tsx.                       */
+  --soh-d-green: #1e7a4e;
+  --soh-d-green-bg: #e7f5ee;
+  --soh-d-amber: #a06b03;
+  --soh-d-amber-bg: #fbf2de;
+  --soh-d-blue: #3d648f;
+  --soh-d-blue-bg: #e6eef6;
+  --soh-d-indigo: #3d50b4;
+  --soh-d-indigo-bg: #e8ecff;
+  --soh-d-red: #c0392b;
+  --soh-d-red-bg: #fbecec;
+  --soh-d-violet: #6b4fd6;
+  --soh-d-violet-bg: #ede9fd;
+
+  /* Grises del tema Deal Engine (no coinciden con los --soh-text-*). */
+  --soh-lead-navy: #0e1c33;
+  --soh-lead-muted: #6b7a8d;
+  --soh-lead-soft: #8a99ac;
+  --soh-lead-faint: #a5afbd;
+  --soh-lead-line: rgba(14, 28, 51, 0.08);
+}

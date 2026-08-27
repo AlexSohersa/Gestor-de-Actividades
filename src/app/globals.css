@@ -1,0 +1,724 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+/* Capa exploratoria de la rama `diseno-vibrante`. Se apoya en tokens.css. */
+@import "../styles/vibrant.css";
+/* Rama `diseno-2.0`: adaptación de "Conexión Viva" a la identidad SOHERSA. */
+@import "../styles/conexion.css";
+
+/* Expone los tokens como utilidades de Tailwind: bg-soh-card, text-soh-text-2,
+   border-soh-border, rounded-soh, shadow-soh, etc. Así el portal no necesita
+   estilos inline por todos lados como sí ocurre en las apps existentes. */
+@theme inline {
+  --color-soh-navy: var(--soh-navy);
+  --color-soh-surface: var(--soh-surface);
+  --color-soh-hover: var(--soh-hover);
+  --color-soh-tile: var(--soh-tile);
+
+  --color-soh-green: var(--soh-green);
+  --color-soh-green-hover: var(--soh-green-hover);
+  --color-soh-green-signal: var(--soh-green-signal);
+  --color-soh-green-deep: var(--soh-green-deep);
+
+  --color-soh-bg: var(--soh-bg);
+  --color-soh-card: var(--soh-card);
+  --color-soh-elev: var(--soh-elev);
+  --color-soh-bg-hover: var(--soh-bg-hover);
+  --color-soh-border: var(--soh-border);
+  --color-soh-border-light: var(--soh-border-light);
+
+  --color-soh-text: var(--soh-text);
+  --color-soh-text-2: var(--soh-text-2);
+  --color-soh-text-3: var(--soh-text-3);
+  --color-soh-dk-2: var(--soh-dk-2);
+  --color-soh-dk-3: var(--soh-dk-3);
+
+  --color-soh-success: var(--soh-success);
+  --color-soh-warn: var(--soh-warn);
+  --color-soh-error: var(--soh-error);
+  --color-soh-info: var(--soh-info);
+
+  --radius-soh: var(--soh-r);
+  --radius-soh-sm: var(--soh-r-sm);
+  --radius-soh-lg: var(--soh-r-lg);
+
+  --shadow-soh: var(--soh-shadow);
+  --shadow-soh-lg: var(--soh-shadow-lg);
+
+  --font-sans: var(--font-plex-sans), var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --color-background: var(--soh-bg);
+  --color-foreground: var(--soh-text);
+}
+
+/* ---------------------------------------------------------------- base -- */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--soh-bg);
+  color: var(--soh-text);
+  /* 4.0: Space Grotesk en TODO el texto, no solo en títulos. Es la letra del
+     diseño aprobado; IBM Plex queda solo para lo monoespaciado. */
+  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  /* Cifras de ancho fijo: las tablas y KPIs no bailan al actualizarse. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Los tres roles tipográficos de Deal Engine. */
+.soh-display {
+  font-family: var(--font-space-grotesk), system-ui, sans-serif;
+}
+.soh-mono {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+::selection {
+  background: rgba(91, 191, 33, 0.25);
+}
+
+/* Foco visible en todo lo interactivo — WCAG 2.4.7 */
+:focus-visible {
+  outline: 2px solid var(--soh-green);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* --------------------------------------------------------- utilidades -- */
+
+/* Kicker del manual: mono, 12.5px, tracking .18em, mayúsculas. Encabeza
+   cada sección y es la firma tipográfica del sistema. */
+.soh-kicker {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Variante compacta para lockups de marca junto al badge. */
+.soh-eyebrow {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Superficie oscura del manual: degradado navy + retícula de puntos de 26px.
+   Se usa en el hero del login y en el del hub. */
+.soh-hero {
+  background: var(--soh-dots) 0 0 / var(--soh-dots-size), var(--soh-hero);
+  color: #ffffff;
+}
+
+/* La regla del sistema, al pie del login. */
+.soh-rule {
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--soh-border);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--soh-text-3);
+  line-height: 1.7;
+}
+
+/* Botón de icono sobre chrome oscuro. */
+.soh-icon-btn {
+  transition: background 0.22s ease;
+}
+.soh-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Punto verde que precede al kicker, con su halo latiendo. */
+.soh-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--soh-green);
+  flex-shrink: 0;
+  animation: soh-dot-halo 3.4s ease-in-out infinite;
+}
+
+/* Scrollbar sobre chrome oscuro */
+.soh-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.soh-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.soh-scroll::-webkit-scrollbar-thumb {
+  background: #22345f;
+  border-radius: 8px;
+}
+.soh-scroll::-webkit-scrollbar-thumb:hover {
+  background: #2e4275;
+}
+
+/* Scrollbar sobre superficies claras */
+.soh-scroll-lt::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.soh-scroll-lt::-webkit-scrollbar-track {
+  background: transparent;
+}
+.soh-scroll-lt::-webkit-scrollbar-thumb {
+  background: #c3ccda;
+  border-radius: 8px;
+}
+
+/* ---------------------------------------------------------- animación --
+   Vocabulario transcrito de Deal Engine (globals.css:255-264). Mismos
+   nombres, mismos valores: si algún día se unifican los repos, no hay que
+   traducir nada.                                                          */
+
+/* Giro de la marca maestra. 16 segundos: apenas se percibe, y esa lentitud
+   es deliberada — el logo orbita, no gira. Del manual oficial. */
+@keyframes soh-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes soh-orbit-rev {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* ------------------------------------------- convergencia del Record Hub --
+   Transcritos literal del manual oficial. Ocho datos que entran desde las
+   ocho direcciones, se acercan al núcleo y se desvanecen al ser absorbidos.
+
+   Cada dirección necesita su propio keyframe: un keyframe único con
+   `translate(var(--dx), var(--dy))` NO anima, porque las custom properties
+   no son interpolables salvo que se declaren con @property — el navegador
+   las lee como texto y el punto se queda quieto.
+
+   Los ocho vectores: 34px en las ortogonales, 24px en las diagonales (que
+   da la misma distancia al centro), y el punto medio a 15px / 11px.        */
+
+@keyframes soh-in-0 {
+  0% { opacity: 0; transform: translate(34px, 0px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(15px, 0px); }
+  68% { opacity: 0; transform: translate(15px, 0px); }
+  100% { opacity: 0; transform: translate(34px, 0px); }
+}
+@keyframes soh-in-1 {
+  0% { opacity: 0; transform: translate(24px, -24px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(11px, -11px); }
+  68% { opacity: 0; transform: translate(11px, -11px); }
+  100% { opacity: 0; transform: translate(24px, -24px); }
+}
+@keyframes soh-in-2 {
+  0% { opacity: 0; transform: translate(0px, -34px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(0px, -15px); }
+  68% { opacity: 0; transform: translate(0px, -15px); }
+  100% { opacity: 0; transform: translate(0px, -34px); }
+}
+@keyframes soh-in-3 {
+  0% { opacity: 0; transform: translate(-24px, -24px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(-11px, -11px); }
+  68% { opacity: 0; transform: translate(-11px, -11px); }
+  100% { opacity: 0; transform: translate(-24px, -24px); }
+}
+@keyframes soh-in-4 {
+  0% { opacity: 0; transform: translate(-34px, 0px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(-15px, 0px); }
+  68% { opacity: 0; transform: translate(-15px, 0px); }
+  100% { opacity: 0; transform: translate(-34px, 0px); }
+}
+@keyframes soh-in-5 {
+  0% { opacity: 0; transform: translate(-24px, 24px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(-11px, 11px); }
+  68% { opacity: 0; transform: translate(-11px, 11px); }
+  100% { opacity: 0; transform: translate(-24px, 24px); }
+}
+@keyframes soh-in-6 {
+  0% { opacity: 0; transform: translate(0px, 34px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(0px, 15px); }
+  68% { opacity: 0; transform: translate(0px, 15px); }
+  100% { opacity: 0; transform: translate(0px, 34px); }
+}
+@keyframes soh-in-7 {
+  0% { opacity: 0; transform: translate(24px, 24px); }
+  20% { opacity: 1; }
+  58% { opacity: 1; transform: translate(11px, 11px); }
+  68% { opacity: 0; transform: translate(11px, 11px); }
+  100% { opacity: 0; transform: translate(24px, 24px); }
+}
+
+/* El núcleo da un respingo al recibir los datos: quieto el 74% del ciclo y
+   un pulso breve al final. Mismo patrón "quieto largo + gesto corto" que
+   usa el logo de Deal Engine. */
+@keyframes soh-hub-recv {
+  0%, 74%, 100% { transform: scale(1); }
+  82% { transform: scale(1.12); }
+  90% { transform: scale(1); }
+}
+
+/* Latido de la diana: crece y se atenúa, como un pulso de radar. */
+@keyframes soh-diana {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0.55;
+  }
+}
+
+@keyframes soh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes soh-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Entrada de bloque, con recorrido más largo que soh-in. */
+@keyframes soh-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Levitación permanente del tile de acento en las tarjetas KPI. */
+@keyframes soh-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Halo que se expande y se desvanece. Es sombra, no escala. */
+@keyframes soh-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(91, 191, 33, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 9px rgba(91, 191, 33, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(91, 191, 33, 0);
+  }
+}
+
+/* Aparición con rebote, para elementos que "llegan". */
+@keyframes soh-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Barrido de carga sobre un fondo de 400px de ancho. */
+@keyframes soh-shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+
+/* Deriva lentísima del resplandor de fondo. Casi imperceptible, y ese es
+   justamente el punto: la página respira sin llamar la atención. */
+@keyframes soh-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(2.5%, -2%) scale(1.06);
+  }
+  66% {
+    transform: translate(-2%, 2.5%) scale(0.97);
+  }
+}
+
+.soh-view {
+  animation: soh-in 0.28s ease both;
+}
+
+.soh-rise {
+  animation: soh-rise 0.4s ease both;
+}
+
+.soh-float {
+  animation: soh-float 4s ease-in-out infinite;
+}
+
+.soh-pulse {
+  animation: soh-pulse 1.8s ease-out infinite;
+}
+
+/* Esqueleto de carga. El gradiente debe medir 400px para casar con el keyframe. */
+.soh-skel {
+  background: linear-gradient(90deg, #eef1f6 25%, #e2e7f0 50%, #eef1f6 75%);
+  background-size: 400px 100%;
+  animation: soh-shimmer 1.4s infinite linear;
+  border-radius: var(--soh-r-sm);
+}
+
+/* --------------------------------------------------------- superficies --
+   Una tarjeta plana con borde gris se lee como formulario. Estas tienen
+   cuatro capas de profundidad y reaccionan al cursor.                     */
+
+.soh-card {
+  position: relative;
+  background: var(--soh-card);
+  border: 1px solid rgba(14, 28, 51, 0.07);
+  border-radius: var(--soh-r-lg);
+  /* Sombra en dos alturas + luz interior arriba: da volumen real. */
+  box-shadow: 0 1px 2px rgba(14, 28, 51, 0.04), 0 6px 18px rgba(14, 28, 51, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Resplandor que sigue al cursor. Las coordenadas llegan por --mx/--my desde
+   el componente; sin JS activo se queda centrado y a opacidad 0. */
+.soh-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    380px circle at var(--mx, 50%) var(--my, 0%),
+    var(--soh-card-glow, rgba(55, 211, 91, 0.1)),
+    transparent 62%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* Filo superior de color: la tarjeta se identifica antes de leerse. */
+.soh-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--soh-card-accent, var(--soh-green)),
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.soh-card-i:hover {
+  transform: translateY(-4px);
+  border-color: rgba(55, 211, 91, 0.35);
+  box-shadow: 0 2px 4px rgba(14, 28, 51, 0.04), 0 18px 40px rgba(14, 28, 51, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.soh-card-i:hover::before,
+.soh-card-i:hover::after {
+  opacity: 1;
+}
+
+/* El badge de marca cobra vida cuando el cursor entra a la tarjeta. */
+.soh-card-i .soh-badge {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.28s ease;
+}
+.soh-card-i:hover .soh-badge {
+  transform: rotate(3deg);
+  box-shadow: 0 0 0 4px rgba(55, 211, 91, 0.18), 0 8px 20px rgba(55, 211, 91, 0.3);
+}
+
+/* ------------------------------------------------------------- fondo ----
+   Tres auroras como capas reales con blur, cada una con su deriva propia.
+   Un `background` de gradientes se ve plano; esto respira de verdad.      */
+
+.soh-canvas {
+  position: relative;
+  /* Sin `overflow: hidden`: aquí el recorte lo hace el propio scroll del
+     contenedor. Ponerlo dejaba un hueco al final de la página, porque las
+     auroras (absolutas y muy grandes) extendían la caja de contenido. */
+}
+
+/* El contenido va por encima de las auroras. */
+.soh-canvas > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* `fixed` y no `absolute`: dentro de un contenedor que scrollea, una capa
+   absoluta se queda anclada arriba y desaparece al bajar. Fijándolas al
+   viewport, el fondo acompaña siempre. */
+.soh-aurora {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes soh-aurora-a {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(80px, -40px) scale(1.15);
+  }
+  66% {
+    transform: translate(-50px, 50px) scale(0.95);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes soh-aurora-b {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  40% {
+    transform: translate(-90px, 40px) scale(1.12);
+  }
+  75% {
+    transform: translate(60px, -30px) scale(0.94);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+/* Respiración del halo tras la marca. */
+@keyframes soh-halo {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.14);
+  }
+}
+
+.soh-halo {
+  animation: soh-halo 5.5s ease-in-out infinite;
+}
+
+/* Halo pulsante del punto verde que precede a cada kicker. */
+@keyframes soh-dot-halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(55, 211, 91, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(55, 211, 91, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* =========================================================================
+   PUENTE DE COMPATIBILIDAD — Gestor de Actividad
+   =========================================================================
+   Las hojas de arriba vienen tal cual del portal, para que esta herramienta
+   se vea exactamente igual y un cambio de identidad se copie de una a otra
+   sin editar nada.
+
+   Aquí abajo solo van dos cosas:
+     1. Los alias de los nombres antiguos (`--soh-bg-base`, `--soh-accent`…)
+        a los tokens canónicos, para no reescribir cada componente.
+     2. Las clases de utilidad que el portal aplica con Tailwind y que aquí
+        se usan como clase suelta.
+   ========================================================================= */
+
+:root {
+  /* Superficies */
+  --soh-bg-base: var(--soh-bg);
+  --soh-bg-card: var(--soh-card);
+  --soh-bg-elevated: var(--soh-elev);
+
+  /* Chrome oscuro */
+  --soh-nav-bg: var(--soh-navy);
+  --soh-nav-surface: var(--soh-surface);
+  --soh-nav-hover: var(--soh-hover);
+  --soh-nav-text: var(--soh-dk-2);
+  --soh-nav-muted: var(--soh-dk-3);
+  --soh-nav-border: var(--soh-dk-border);
+  --soh-bg-surface: var(--soh-navy);
+
+  /* Acento */
+  --soh-accent: var(--soh-green);
+  --soh-accent-dim: var(--soh-green-hover);
+  --soh-accent-glow: rgba(55, 211, 91, 0.12);
+
+  /* Texto */
+  --soh-text-primary: var(--soh-text);
+  --soh-text-secondary: var(--soh-text-2);
+  --soh-text-muted: var(--soh-text-3);
+
+  /* Estados del gestor: se ven igual en ausencias, horas extra y tickets. */
+  --soh-pendiente: var(--soh-warn);
+  --soh-aprobado: var(--soh-success);
+  --soh-rechazado: var(--soh-error);
+  --soh-proceso: var(--soh-info);
+}
+
+/* Botón primario: verde de marca, texto blanco. */
+.soh-btn-accent {
+  background: var(--soh-green);
+  color: #ffffff;
+  transition: background var(--soh-t) ease;
+}
+.soh-btn-accent:hover { background: var(--soh-green-hover); }
+.soh-btn-accent:active { transform: scale(0.97); }
+
+/* Botón sin fondo, para acciones secundarias. */
+.soh-btn-ghost {
+  color: var(--soh-text-2);
+  transition: color var(--soh-t) ease, background var(--soh-t) ease;
+}
+.soh-btn-ghost:hover { background: var(--soh-bg-hover); color: var(--soh-text); }
+
+/* Acción sobre un estado vacío: presente sin competir con el botón primario. */
+.soh-empty-action {
+  background: rgba(55, 211, 91, 0.10);
+  color: var(--soh-green-hover);
+  border: 1px solid rgba(55, 211, 91, 0.28);
+  transition: background var(--soh-t) ease;
+}
+.soh-empty-action:hover { background: rgba(55, 211, 91, 0.18); }
+
+/* Icono de borrar: tenue en reposo, rojo al pasar el ratón. */
+.soh-del {
+  color: var(--soh-text-3);
+  transition: color var(--soh-t) ease;
+}
+.soh-del:hover { color: var(--soh-error); }
+
+/* Campo de formulario. */
+.soh-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--soh-r);
+  font-size: 0.875rem;
+  color: var(--soh-text);
+  background: var(--soh-card);
+  border: 1px solid var(--soh-border);
+  transition: border-color var(--soh-t) ease;
+}
+.soh-input::placeholder { color: var(--soh-text-3); }
+.soh-input:focus { border-color: var(--soh-green); outline: none; }
+.soh-input[aria-invalid="true"] { border-color: var(--soh-error); }
+
+/* Tarjeta de cifra: reacciona al pasar el ratón para invitar a pulsarla. */
+.soh-kpi-card {
+  background: var(--soh-card);
+  border: 1px solid var(--soh-border);
+  border-radius: var(--soh-r-lg);
+  transition: border-color var(--soh-t) ease, box-shadow var(--soh-t) ease;
+}
+.soh-kpi-card:hover {
+  border-color: var(--soh-green);
+  box-shadow: var(--soh-shadow);
+}
+
+/* Scrollbar dentro del menú oscuro. */
+.soh-dark-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.soh-dark-scroll::-webkit-scrollbar-track { background: transparent; }
+.soh-dark-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+.soh-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+
+/* Etiqueta técnica en mayúsculas, como las del manual. */
+.soh-eyebrow {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* El wordmark SOHERSA. */
+.soh-wordmark {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* Animaciones de las ventanas modales. */
+@keyframes sohFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sohPopIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.soh-fade-in { animation: sohFadeIn 160ms ease-out; }
+.soh-pop-in  { animation: sohPopIn 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .soh-btn-accent:active { transform: none; }
+}

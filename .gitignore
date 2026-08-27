@@ -1,0 +1,16 @@
+/node_modules
+/.next/
+/out/
+/build
+.DS_Store
+*.pem
+npm-debug.log*
+.env*
+!.env.example
+/coverage
+next-env.d.ts
+tsconfig.tsbuildinfo
+/respaldos
+
+# Lleva secretos: no debe viajar al repositorio.
+VARIABLES-VERCEL.txt

@@ -1,0 +1,505 @@
+// =============================================================================
+// GESTOR DE ACTIVIDAD — SOHERSA
+// =============================================================================
+// Una sola base en Neon, dividida en secciones (schemas de PostgreSQL):
+//
+//   core       personas, proyectos, clientes, roles  ← COMPARTIDO, no es nuestro
+//   actividad  horas, ausencias, checadas, tickets   ← NUESTRA SECCIÓN
+//
+// REGLA: `core` es dueño de personas, proyectos y clientes. Esta herramienta
+// los REFERENCIA por clave foránea; nunca guarda su propia copia. Por eso aquí
+// no existe ningún modelo TeamMember ni tabla de proyectos: se usan
+// core.persona y core.proyecto.
+//
+// Los modelos de `core` se declaran para poder LEERLOS y enlazarlos. No se
+// escriben desde esta aplicación salvo `acceso` (la bitácora de visitas de esta
+// herramienta) y `persona_rol` en la pantalla de equipo.
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+  // Vercel corre Linux; sin esto Prisma solo trae el motor de Windows y en
+  // producción toda consulta falla.
+  binaryTargets   = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["actividad", "core"]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECCIÓN `actividad` — lo que esta herramienta posee y escribe
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Una hora reportada. Es el corazón del gestor.
+///
+/// `persona_id` es obligatorio y NO se rellena solo: no hay disparador en esta
+/// tabla (sí lo hay en las tablas espejo de otras herramientas, que tienen
+/// columna `email`). La aplicación lo resuelve contra core.persona_correo antes
+/// de insertar. Ver `resolverPersona` en el módulo de identidad.
+///
+/// `proyecto_codigo` referencia core.proyecto. Cuando la hoja traía un nombre
+/// de proyecto que no existe en el padrón, se conserva en `proyecto_texto` para
+/// no perder el dato ni romper la clave foránea.
+model Hora {
+  id             String   @id
+  personaId      String   @map("persona_id")
+  proyectoCodigo String?  @map("proyecto_codigo")
+  entregableId   String?  @map("entregable_id")
+  fecha          DateTime @db.Date
+  horas          Decimal  @db.Decimal(6, 2)
+  disciplina     String?
+  tipo           String?
+  esfuerzo       String?
+  comentario     String?
+  /// Columna I de la hoja: ¿PAGAR? ("PAGADO", "NO AUTORIZADO"…).
+  pago           String?
+  /// Columna J de la hoja, el ENVÍO: "NORMAL", "EXTRA" o "AUSENCIA".
+  ///
+  /// Es lo que separa una hora normal de una extra o de una ausencia. El
+  /// `tipo` NO sirve para esto: ese es el catálogo de actividad (MODELADO,
+  /// REVISIÓN…) y nunca vale "EXTRA", así que el contador de horas extra
+  /// salía siempre en cero.
+  categoria      String   @default("NORMAL")
+  quincena       Int?
+  /// De dónde salió la fila: "hoja" (importada del spreadsheet) o "app".
+  origen         String   @default("app")
+  proyectoTexto  String?  @map("proyecto_texto")
+  /// El nombre del entregable tal como venía en la hoja.
+  ///
+  /// Existe por la misma razón que `proyectoTexto`: core.entregable solo tiene
+  /// los entregables que alguien dio de alta, y las hojas traen nombres que no
+  /// están en el padrón. Sin esta columna, esas horas perderían contra qué se
+  /// trabajó — que es justo lo que el radar necesita para cruzar registradas
+  /// contra cotizadas.
+  entregableTexto String? @map("entregable_texto")
+  /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
+  /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
+  sheetSync      String   @default("pendiente") @map("sheet_sync")
+  creadoEn       DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn  DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  persona    Persona     @relation(fields: [personaId], references: [id], onDelete: Restrict)
+  proyecto   Proyecto?   @relation(fields: [proyectoCodigo], references: [codigo], onDelete: Restrict)
+  entregable Entregable? @relation(fields: [entregableId], references: [id], onDelete: SetNull)
+
+  @@index([fecha(sort: Desc)], map: "hora_fecha_idx")
+  @@index([personaId, fecha(sort: Desc)], map: "hora_persona_fecha_idx")
+  @@index([proyectoCodigo], map: "hora_proyecto_idx")
+  @@index([sheetSync], map: "hora_sync_idx")
+  @@map("hora")
+  @@schema("actividad")
+}
+
+/// Horas cotizadas por entregable. El contrapeso del radar de proyectos:
+/// cotizadas vs registradas.
+model HoraCotizada {
+  id             String  @id
+  proyectoCodigo String  @map("proyecto_codigo")
+  entregable     String
+  disciplina     String?
+  horas          Decimal @db.Decimal(10, 2)
+
+  proyecto Proyecto @relation(fields: [proyectoCodigo], references: [codigo], onDelete: Cascade)
+
+  @@unique([proyectoCodigo, entregable, disciplina], map: "hora_cotizada_proyecto_codigo_entregable_disciplina_key")
+  @@map("hora_cotizada")
+  @@schema("actividad")
+}
+
+/// Vacaciones, permisos e incapacidades.
+model Ausencia {
+  id          String    @id
+  personaId   String    @map("persona_id")
+  tipo        String
+  fechaInicio DateTime  @map("fecha_inicio") @db.Date
+  fechaFin    DateTime  @map("fecha_fin") @db.Date
+  medioDia    Boolean   @default(false) @map("medio_dia")
+  horas       Decimal?  @db.Decimal(5, 2)
+  motivo      String?
+  /// PENDIENTE · APROBADA · RECHAZADA (restricción CHECK en la base).
+  estado      String    @default("PENDIENTE")
+  /// A QUIÉN se le mandó para su visto bueno.
+  ///
+  /// Solo esa persona puede decidirla. Deducir el aprobador del coordinador
+  /// del padrón dejaba que cualquier coordinador de esa persona la resolviera,
+  /// aunque la solicitud fuera dirigida a otro.
+  enviadaA    String?   @map("enviada_a")
+  decididaPor String?   @map("decidida_por")
+  decididaEn  DateTime? @map("decidida_en") @db.Timestamptz(6)
+  /// Periodo de vacaciones del que se descontaron los días.
+  /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
+  /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
+  sheetSync   String    @default("pendiente") @map("sheet_sync")
+  periodo     Int?
+  creadoEn    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  persona    Persona  @relation("AusenciaPersona", fields: [personaId], references: [id], onDelete: Cascade)
+  destinatario Persona? @relation("AusenciaDestino", fields: [enviadaA], references: [id], onDelete: SetNull)
+  decisorPor Persona? @relation("AusenciaDecisor", fields: [decididaPor], references: [id], onDelete: SetNull)
+
+  @@index([estado], map: "ausencia_estado_idx")
+  @@index([personaId, fechaInicio(sort: Desc)], map: "ausencia_persona_idx")
+  @@index([enviadaA, estado], map: "ausencia_enviada_a_idx")
+  @@index([sheetSync], map: "ausencia_sync_idx")
+  @@map("ausencia")
+  @@schema("actividad")
+}
+
+/// Ticket de mantenimiento interno (software y hardware).
+///
+/// Sigue el modelo del gestor de siempre: folio correlativo, prioridad, equipo
+/// afectado y los cuatro estados por los que pasa una incidencia.
+model Ticket {
+  id          String    @id
+  /// Correlativo del folio: TCK-001, TCK-002… Lo asigna la base.
+  numero      Int       @unique(map: "ticket_numero_key") @default(autoincrement())
+  personaId   String    @map("persona_id")
+  titulo      String
+  detalle     String?
+  /// SOFTWARE · HARDWARE
+  clase       String?
+  falla       String?
+  /// ALTA · MEDIA · BAJA (restricción CHECK en la base).
+  prioridad   String    @default("MEDIA")
+  /// EN_REVISION · EN_PROCESO · EN_ESPERA · RESUELTO (restricción CHECK).
+  estado      String    @default("EN_REVISION")
+  /// El equipo afectado y su AnyDesk, para poder atenderlo en remoto.
+  equipo      String?
+  anydesk     String?
+  /// Id del caso en Dynamics 365, cuando el puente está encendido.
+  dynamicsId  String?   @map("dynamics_id")
+  atendidoPor String?   @map("atendido_por")
+  /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
+  /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
+  sheetSync   String    @default("pendiente") @map("sheet_sync")
+  creadoEn    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  cerradoEn   DateTime? @map("cerrado_en") @db.Timestamptz(6)
+
+  persona  Persona  @relation("TicketPersona", fields: [personaId], references: [id], onDelete: Restrict)
+  atendida Persona? @relation("TicketAtiende", fields: [atendidoPor], references: [id], onDelete: SetNull)
+  eventos  TicketEvento[]
+
+  @@index([estado, creadoEn(sort: Desc)], map: "ticket_estado_idx")
+  @@index([sheetSync], map: "ticket_sync_idx")
+  @@map("ticket")
+  @@schema("actividad")
+}
+
+/// La bitácora de un ticket: quién dijo qué y cuándo.
+///
+/// Sin ella el historial sale vacío y no queda rastro de lo que se hizo para
+/// resolverlo, que suele ser lo más útil cuando la avería se repite.
+model TicketEvento {
+  id        String   @id
+  ticketId  String   @map("ticket_id")
+  /// Quién lo escribió. Null cuando lo genera el propio sistema.
+  personaId String?  @map("persona_id")
+  texto     String
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  ticket  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  persona Persona? @relation(fields: [personaId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, creadoEn], map: "ticket_evento_ticket_idx")
+  @@map("ticket_evento")
+  @@schema("actividad")
+}
+
+/// Entrada y salida de home office. Una fila por persona y día.
+model Checada {
+  id        String    @id
+  personaId String    @map("persona_id")
+  fecha     DateTime  @db.Date
+  entrada   DateTime? @db.Timestamptz(6)
+  salida    DateTime? @db.Timestamptz(6)
+  /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
+  /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
+  sheetSync String    @default("pendiente") @map("sheet_sync")
+  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@unique([personaId, fecha], map: "checada_persona_id_fecha_key")
+  @@index([sheetSync], map: "checada_sync_idx")
+  @@map("checada")
+  @@schema("actividad")
+}
+
+/// Un bloque de vacaciones: los días que corresponden a un periodo de
+/// antigüedad, con su fecha de liberación y la de vencimiento.
+///
+/// Una persona puede tener VARIOS bloques del mismo periodo con fechas
+/// distintas (por ejemplo 10 días de entrada y 7 más al cumplir el año), así
+/// que la clave es un id propio y no (persona, periodo): fusionarlos perdía la
+/// distinción entre lo ya liberado y lo que todavía no toca.
+model SaldoVacaciones {
+  id        String    @id
+  personaId String    @map("persona_id")
+  periodo   Int
+  dias      Decimal   @default(0) @db.Decimal(5, 2)
+  /// Días de este bloque YA consumidos antes del corte.
+  ///
+  /// El origen guarda en `dias` lo que QUEDA, no lo otorgado: ya venía con las
+  /// ausencias descontadas. Sin esta referencia, derivar el consumo de las
+  /// ausencias importadas lo restaría por segunda vez.
+  usados    Decimal   @default(0) @db.Decimal(5, 2)
+  /// Hasta qué fecha está ya reflejado el consumo en `dias`.
+  ///
+  /// Las ausencias ANTERIORES a esta fecha no vuelven a descontar; las
+  /// posteriores —las que se piden desde esta herramienta— sí.
+  corte     DateTime? @db.Date
+  /// Cuándo se pueden empezar a tomar. Null o pasada = ya disponibles; futura
+  /// = otorgados pero aún no liberados, y NO cuentan como disponibles.
+  liberadoEn DateTime? @map("liberado_en") @db.Date
+  /// Cuándo se pierden los días no tomados de este bloque.
+  venceEn   DateTime? @map("vence_en") @db.Date
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([personaId, venceEn], map: "saldo_vacaciones_persona_idx")
+  @@map("saldo_vacaciones")
+  @@schema("actividad")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECCIÓN `core` — el padrón compartido. Se LEE; no se inventa nada aquí.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Una persona de la empresa. El padrón único de las cinco herramientas.
+///
+/// NO se identifica por correo: cuatro personas entran con su Gmail en una
+/// herramienta y con el correo de empresa en otra. Los correos viven en
+/// `PersonaCorreo` (uno principal por persona) y la búsqueda se hace así:
+///   where: { correos: { some: { correo: email.toLowerCase() } } }
+model Persona {
+  id            String    @id
+  nombre        String
+  nombreUsuario String?   @map("nombre_usuario")
+  numero        String?   @unique
+  puesto        String?
+  area          String?
+  /// Jornada diaria. NO es 8 para todos: hay jornadas de 4 y 5 horas.
+  horasDia      Decimal   @default(8) @map("horas_dia") @db.Decimal(4, 2)
+  fechaIngreso  DateTime? @map("fecha_ingreso") @db.Date
+  celular       String?
+  foto          String?
+  /// Quién aprueba sus ausencias y horas extra.
+  coordinadorId String?   @map("coordinador_id")
+  /// COLABORADOR · EXTERNO · SISTEMA
+  tipo          String    @default("COLABORADOR")
+  activo        Boolean   @default(true)
+  /// Administrador de la plataforma: ve a toda la empresa y edita permisos.
+  esAdmin       Boolean   @default(false) @map("es_admin")
+  /// refresh_token de Google. Se guarda porque Google solo lo entrega en el
+  /// primer consentimiento y hace falta para escribir en Sheets en su nombre.
+  googleRefresco String?  @map("google_refresco")
+  creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  origen        String    @default("hoja")
+
+  coordinador Persona?  @relation("Coordinacion", fields: [coordinadorId], references: [id], onDelete: SetNull)
+  coordinados Persona[] @relation("Coordinacion")
+
+  correos            PersonaCorreo[]
+  roles              PersonaRol[]      @relation("RolDePersona")
+  rolesAsignados     PersonaRol[]      @relation("RolAsignadoPor")
+  accesos            Acceso[]
+  horas              Hora[]
+  ausencias          Ausencia[]        @relation("AusenciaPersona")
+  ausenciasRecibidas Ausencia[]        @relation("AusenciaDestino")
+  ausenciasDecididas Ausencia[]        @relation("AusenciaDecisor")
+  tickets            Ticket[]          @relation("TicketPersona")
+  ticketsAtendidos   Ticket[]          @relation("TicketAtiende")
+  eventosTicket      TicketEvento[]
+  checadas           Checada[]
+  saldos             SaldoVacaciones[]
+  proyectosLiderados Proyecto[]        @relation("ProyectoLider")
+
+  @@index([area], map: "persona_area_idx")
+  @@index([coordinadorId], map: "persona_coordinador_idx")
+  @@map("persona")
+  @@schema("core")
+}
+
+/// Los correos de una persona. La clave es el correo; una persona puede tener
+/// varios (empresa + Gmail) y exactamente uno marcado como principal.
+model PersonaCorreo {
+  correo    String   @id
+  personaId String   @map("persona_id")
+  principal Boolean  @default(false)
+  origen    String?
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([personaId], map: "persona_correo_persona_idx")
+  @@map("persona_correo")
+  @@schema("core")
+}
+
+/// Un proyecto del padrón. `codigo` es la clave con la que lo referencian todas
+/// las herramientas (ej. SOH_INT_00000_AUS para las ausencias).
+model Proyecto {
+  codigo        String    @id
+  nombre        String
+  claveCorta    String?   @map("clave_corta")
+  clienteId     String?   @map("cliente_id")
+  servicioClave String?   @map("servicio_clave")
+  liderId       String?   @map("lider_id")
+  /// COTIZACION · ACTIVO · CERRADO · CANCELADO · EN_PAUSA
+  estado        String    @default("COTIZACION")
+  montoContrato Decimal?  @map("monto_contrato") @db.Decimal(14, 2)
+  fechaInicio   DateTime? @map("fecha_inicio") @db.Date
+  fechaFin      DateTime? @map("fecha_fin") @db.Date
+  origen        String    @default("hoja")
+  creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  cliente     Cliente?       @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  lider       Persona?       @relation("ProyectoLider", fields: [liderId], references: [id], onDelete: SetNull)
+  entregables Entregable[]
+  horas       Hora[]
+  cotizadas   HoraCotizada[]
+
+  @@index([clienteId], map: "proyecto_cliente_idx")
+  @@index([estado], map: "proyecto_estado_idx")
+  @@index([liderId], map: "proyecto_lider_idx")
+  @@map("proyecto")
+  @@schema("core")
+}
+
+/// Un entregable dentro de un proyecto.
+model Entregable {
+  id             String   @id
+  proyectoCodigo String   @map("proyecto_codigo")
+  nombre         String
+  tipo           String?
+  especialidad   String?
+  disciplina     String?
+  horasCotizadas Decimal? @map("horas_cotizadas") @db.Decimal(10, 2)
+  creadoEn       DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  proyecto Proyecto @relation(fields: [proyectoCodigo], references: [codigo], onDelete: Cascade)
+  horas    Hora[]
+
+  @@unique([proyectoCodigo, nombre], map: "entregable_proyecto_codigo_nombre_key")
+  @@index([proyectoCodigo], map: "entregable_proyecto_idx")
+  @@map("entregable")
+  @@schema("core")
+}
+
+model Cliente {
+  id            String   @id
+  nombre        String
+  clave         String?  @unique
+  razonSocial   String?  @map("razon_social")
+  rfc           String?
+  clasificacion String?
+  segmento      String?
+  industria     String?
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  proyectos Proyecto[]
+
+  @@map("cliente")
+  @@schema("core")
+}
+
+/// Las herramientas de la plataforma. La nuestra es la clave "actividad".
+model Herramienta {
+  clave  String  @id
+  nombre String
+  url    String?
+  activa Boolean @default(true)
+
+  roles   PersonaRol[]
+  accesos Acceso[]
+
+  @@map("herramienta")
+  @@schema("core")
+}
+
+/// Los papeles: ADMIN, DIRECCION, COORDINADOR, COLABORADOR, LECTURA, EXTERNO.
+/// `jerarquia` ordena de mayor a menor privilegio.
+model Rol {
+  clave       String  @id
+  nombre      String
+  descripcion String?
+  jerarquia   Int     @default(0)
+
+  personas PersonaRol[]
+
+  @@map("rol")
+  @@schema("core")
+}
+
+/// Qué papel tiene cada persona EN CADA HERRAMIENTA, y qué secciones se le
+/// ocultan. Es la pantalla /equipo: quién aprueba qué.
+model PersonaRol {
+  personaId        String   @map("persona_id")
+  herramientaClave String   @map("herramienta_clave")
+  rolClave         String   @map("rol_clave")
+  seccionesOcultas String[] @default([]) @map("secciones_ocultas")
+  asignadoEn       DateTime @default(now()) @map("asignado_en") @db.Timestamptz(6)
+  asignadoPor      String?  @map("asignado_por")
+
+  persona     Persona     @relation("RolDePersona", fields: [personaId], references: [id], onDelete: Cascade)
+  herramienta Herramienta @relation(fields: [herramientaClave], references: [clave], onDelete: Cascade)
+  rol         Rol         @relation(fields: [rolClave], references: [clave], onDelete: Restrict)
+  asignador   Persona?    @relation("RolAsignadoPor", fields: [asignadoPor], references: [id], onDelete: SetNull)
+
+  @@id([personaId, herramientaClave])
+  @@map("persona_rol")
+  @@schema("core")
+}
+
+/// Quién cambió el papel de quién, y cuándo. La escribe /equipo para dejar
+/// rastro de cada cambio de permisos.
+model BitacoraPermiso {
+  id               BigInt   @id @default(autoincrement())
+  personaId        String   @map("persona_id")
+  herramientaClave String   @map("herramienta_clave")
+  rolAntes         String?  @map("rol_antes")
+  rolDespues       String?  @map("rol_despues")
+  hechoPor         String?  @map("hecho_por")
+  hechoEn          DateTime @default(now()) @map("hecho_en") @db.Timestamptz(6)
+  nota             String?
+
+  @@index([personaId, hechoEn(sort: Desc)], map: "bitacora_permiso_persona_idx")
+  @@map("bitacora_permiso")
+  @@schema("core")
+}
+
+/// Bitácora de visitas: cuándo entró cada persona a cada herramienta.
+model Acceso {
+  personaId        String    @map("persona_id")
+  herramientaClave String    @map("herramienta_clave")
+  primeraVez       DateTime? @map("primera_vez") @db.Timestamptz(6)
+  ultimaVez        DateTime? @map("ultima_vez") @db.Timestamptz(6)
+  visitas          Int       @default(0)
+
+  persona     Persona     @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  herramienta Herramienta @relation(fields: [herramientaClave], references: [clave], onDelete: Cascade)
+
+  @@id([personaId, herramientaClave])
+  @@map("acceso")
+  @@schema("core")
+}
+
+model Servicio {
+  clave       String  @id
+  nombre      String
+  descripcion String?
+
+  @@map("servicio")
+  @@schema("core")
+}

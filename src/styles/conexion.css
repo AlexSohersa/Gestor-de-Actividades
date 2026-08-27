@@ -1,0 +1,1095 @@
+/* =========================================================================
+   CONEXIÓN VIVA 3.0 — rama `diseno-3.0`
+   =========================================================================
+   Evolución visual del 2.0. La estructura no cambia —columnas, roles y
+   jerarquía quedan como están—; cambia la piel:
+
+     · El cable vivo: una corriente de degradado verde→turquesa fluye bajo
+       la barra superior. Es la "conexión" del nombre, hecha literal.
+     · Textura de marca: la retícula de puntos del manual SOHERSA (portada
+       y secciones oscuras) cubre el chrome oscuro.
+     · Profundidad: sombras en tres capas teñidas de navy, cristal en las
+       métricas del hero, y un anillo cónico girando en la destacada.
+     · Microinteracciones: brillo que barre los botones, glifos que
+       reaccionan, riel luminoso en la navegación activa.
+
+   La paleta sigue siendo solo la del manual (sección 06 · Color):
+       #37D35B Verde Sohersa · #0E1C33 Azul Sohersa · #0A1526 Azul profundo
+       #1D92A8 escalón del eje verde→azul
+   ========================================================================= */
+
+:root {
+  /* =====================================================================
+     PALETA CONEXIÓN VIVA 4.0 — tomada literal del diseño aprobado
+     (`Conexion Viva 4.0.dc.html` en Claude Design).
+
+     Los NOMBRES de las variables se conservan de la 3.0 a propósito: todos
+     los componentes ya las referencian, así que remapear los valores aquí
+     restiliza la plataforma entera sin tocar cada archivo.
+     ===================================================================== */
+
+  /* --- Superficie oscura del portal ------------------------------------ */
+  --cv-navy: #0b1d33;
+  --cv-deep: #07172b;
+  --cv-navy-soft: #102238;
+
+  /* --- Verde de marca --------------------------------------------------- */
+  --cv-green: #32d66b;
+  --cv-green-soft: #7ceb96;
+  --cv-green-deep: #137a3e;
+  --cv-green-ink: #199950; /* botones y enlaces sobre fondo claro */
+
+  /* --- Acentos por producto/área ---------------------------------------- */
+  --cv-teal: #39b8b4;
+  --cv-sea: #39b8b4; /* la 4.0 unifica teal y sea en un solo turquesa */
+  --cv-sky: #3e7fa6;
+  --cv-violet: #7669e8;
+
+  /* --- Semánticos de urgencia (avisos, estados) -------------------------- */
+  --cv-red: #e95e64;
+  --cv-red-ink: #b23a40;
+  --cv-red-soft: #fce9ea;
+  --cv-amber: #f5b843;
+  --cv-amber-ink: #b07c10;
+  --cv-amber-soft: #fdf3dc;
+
+  /* --- Superficies claras ----------------------------------------------- */
+  --cv-bg: #f2f6fa;
+  --cv-card: #ffffff;
+  --cv-line: #dde5ee;
+  --cv-line-soft: #edf2f7;
+  --cv-row-line: #f1f5f9;
+  --cv-hover: #f6f9fc;
+
+  /* --- Texto ------------------------------------------------------------ */
+  --cv-ink: #102039;
+  --cv-ink-2: #455771;
+  --cv-ink-3: #5d6e87;
+  --cv-ink-4: #8a99ad;
+  --cv-faint: #c6d2de;
+
+  /* Sobre superficie oscura */
+  --cv-dk-1: #ffffff;
+  --cv-dk-2: #9db2c6;
+  --cv-dk-3: #8a99ad;
+  --cv-dk-4: #6e8199;
+
+  /* --- Forma -------------------------------------------------------------
+     La 4.0 baja los radios: 18px en tarjetas, no 24. Se ve más denso y
+     más serio sin perder la suavidad. */
+  --cv-r-sm: 10px;
+  --cv-r: 14px;
+  --cv-r-lg: 18px;
+  --cv-r-xl: 22px;
+
+  /* --- Elevación ---------------------------------------------------------
+     Más ligera que la 3.0: el diseño confía en el borde y el hover, no en
+     sombras grandes permanentes. */
+  --cv-lift: 0 1px 1px rgba(7, 23, 43, 0.03), 0 4px 12px rgba(7, 23, 43, 0.05);
+  --cv-lift-lg:
+    0 2px 4px rgba(7, 23, 43, 0.05), 0 18px 38px rgba(7, 23, 43, 0.12);
+}
+
+/* El ángulo del anillo cónico de la destacada. Registrarlo con `@property`
+   es lo que lo hace animable: una custom property normal no se interpola
+   (la misma lección que los glifos de la 2.0). */
+@property --cv-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* ---------------------------------------------------------- movimiento --
+   Los keyframes del diseño original, con sus tiempos exactos.             */
+
+@keyframes cv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cv-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cv-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Las dos auroras del fondo oscuro, con derivas desfasadas. */
+@keyframes cv-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(46px, -30px) scale(1.1);
+  }
+}
+
+@keyframes cv-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-38px, 26px) scale(1.08);
+  }
+}
+
+/* Los enlaces de la constelación se dibujan solos al cargar. */
+@keyframes cv-trace {
+  from {
+    stroke-dashoffset: 300;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Latido de los nodos: sube y se ilumina, desfasado entre unos y otros. */
+@keyframes cv-node {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+/* Las capas BIM respiran verticalmente. */
+@keyframes cv-layer {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Onda que sale del centro: la valoración recibida en Evaluación 360. */
+@keyframes cv-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70% {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+}
+
+.cv-rise {
+  animation: cv-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cv-pop {
+  animation: cv-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* Los cajones de formulario entran deslizándose desde la derecha: se ve de
+   dónde vienen y a dónde vuelven al cerrarlos. */
+@keyframes cv-slide-r {
+  from {
+    transform: translateX(30px);
+    opacity: 0.3;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.cv-slide-r {
+  animation: cv-slide-r 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* Velo del modal: aparece sin desplazarse, para que el contenido de dentro sea
+   lo único que se mueve. */
+.cv-fade-in {
+  animation: cv-fade 0.2s ease both;
+}
+
+/* Giro rápido, para el icono del botón mientras sincroniza. Distinto del
+   `cv-spin` del anillo de la destacada, que da una vuelta cada 16s. */
+@keyframes cv-spin-fast {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Rejilla de automatizaciones: se acomoda sola al ancho disponible. */
+.cv-auto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+/* Pestañas de la navegación interna de una sección. */
+.cv-tab {
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.cv-tab:hover:not([data-active]) {
+  border-color: rgba(55, 211, 91, 0.45);
+  transform: translateY(-1px);
+}
+.cv-tab[data-active] {
+  box-shadow:
+    0 2px 6px rgba(10, 21, 38, 0.16),
+    0 12px 26px rgba(10, 21, 38, 0.18);
+}
+
+/* ---------------------------------------------------------- superficies -- */
+
+.cv-card {
+  position: relative;
+  background: var(--cv-card);
+  border: 1px solid var(--cv-line);
+  border-radius: var(--cv-r-lg);
+  box-shadow: var(--cv-lift);
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.26s ease,
+    border-color 0.26s ease;
+}
+
+.cv-card-i:hover {
+  transform: translateY(-4px);
+  border-color: rgba(55, 211, 91, 0.4);
+  box-shadow: var(--cv-lift-lg);
+}
+
+/* Chip sobre superficie oscura: la píldora de fecha del hero. */
+.cv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: rgba(55, 211, 91, 0.12);
+  border: 1px solid rgba(55, 211, 91, 0.26);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--cv-green-soft);
+}
+
+/* Panel de métrica del hero, sobre el navy. Lleva un filo inferior del color
+   de su cifra: sin él las tres cajas se leen idénticas. */
+.cv-stat {
+  position: relative;
+  flex: 1 1 150px;
+  /* 3.0: cristal de verdad. Degradado con luz arriba, desenfoque del fondo y
+     un filo interior blanco: la caja se despega del navy en vez de ser un
+     rectángulo apenas más claro. */
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0.045)
+  );
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: var(--cv-r);
+  padding: 16px 18px 18px;
+  overflow: hidden;
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease,
+    transform 0.22s ease;
+}
+
+/* Filo vertical a la izquierda: en formato horizontal, una barra inferior
+   quedaría desligada de la cifra. */
+.cv-stat::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2.5px;
+  border-radius: 0 3px 3px 0;
+  background: var(--cv-stat-tint, var(--cv-green));
+  opacity: 0.7;
+}
+
+.cv-stat:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: color-mix(
+    in srgb,
+    var(--cv-stat-tint, var(--cv-green)) 40%,
+    transparent
+  );
+  transform: translateY(-2px);
+}
+
+/* Botón del chrome oscuro (ayuda, perfil). */
+.cv-ghost {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  transition: background 0.22s ease;
+  cursor: pointer;
+}
+.cv-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ------------------------------------------------------- continuidad ----
+   El hero es oscuro y espectacular; sin transición, la zona clara se apaga
+   de golpe. Estas capas la mantienen viva.                                */
+
+/* Lienzo del área de trabajo: retícula finísima de plano + dos auroras del
+   verde y el turquesa de marca. Casi no se percibe, pero el fondo deja de
+   ser un gris muerto. */
+/* Todo el fondo va en `background`, sin pseudo-elementos.
+   `::after` estaba en `position: fixed` con `inset: -10%` Y una animación de
+   `transform`. Esa combinación desbordaba el contenedor y ensanchaba el área
+   desplazable — de ahí la franja muerta a la derecha.
+
+   Un `background` no ocupa espacio ni puede desbordar, así que el problema no
+   puede repetirse. La retícula se difumina hacia abajo con `mask`, y las dos
+   auroras quedan fijas al viewport con `background-attachment`. */
+.cv-canvas {
+  position: relative;
+  overflow-x: hidden;
+  background-color: var(--cv-bg);
+  /* 3.0: la retícula de líneas se sustituye por la de PUNTOS del manual —la
+     misma textura que firma el chrome oscuro, en su versión clara—, y las
+     auroras suben un punto de presencia. El plano deja de ser papel
+     cuadriculado y pasa a ser superficie de marca. */
+  background-image:
+    radial-gradient(38% 32% at 8% 4%, rgba(55, 211, 91, 0.13), transparent 68%),
+    radial-gradient(
+      34% 30% at 97% 26%,
+      rgba(29, 146, 168, 0.12),
+      transparent 68%
+    ),
+    radial-gradient(
+      circle at 1px 1px,
+      rgba(14, 28, 51, 0.06) 1.1px,
+      transparent 0
+    );
+  background-size:
+    100% 100%,
+    100% 100%,
+    24px 24px;
+  background-attachment: fixed, fixed, local;
+  background-repeat: no-repeat, no-repeat, repeat;
+}
+
+/* La costura entre el hero y el área clara se retiró: eran 46px de negro
+   superpuestos sobre la banda, y con el hero ya reducido a ~52px se leía como
+   una línea sucia en vez de una transición. El borde limpio entre el navy y la
+   niebla funciona mejor. */
+
+/* Filo superior de color en las tarjetas de sección: identifica el área de un
+   vistazo y rompe la uniformidad blanca. */
+.cv-tinted {
+  position: relative;
+  overflow: hidden;
+}
+.cv-tinted::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--cv-tint, var(--cv-green)),
+    color-mix(in srgb, var(--cv-tint, var(--cv-green)) 30%, transparent) 65%,
+    transparent
+  );
+}
+
+/* El contenido va por encima del resplandor de la esquina. */
+.cv-glow > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Resplandor de color en la esquina de la tarjeta, del tono de su área. */
+.cv-glow::after {
+  content: "";
+  position: absolute;
+  top: -60px;
+  right: -50px;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--cv-tint, var(--cv-green)) 16%, transparent),
+    transparent 68%
+  );
+  filter: blur(26px);
+}
+
+/* --------------------------------------------------------- columnas ----
+   Tres columnas con ROLES distintos, no un bento donde todo se mezcla:
+
+     izquierda → lo que tienes que hacer (acciones)
+     centro    → dónde entras a trabajar (herramientas)
+     derecha   → lo que pasa a tu alrededor (información)
+
+   Cada cosa en su sitio: así se sabe dónde mirar sin leerlo todo.        */
+
+/* El contenedor —no la ventana— decide cuántas columnas caben, y el
+   `container-type` va en el PADRE (`.cv-shell`): un elemento no puede
+   consultar su propio tamaño. Mientras `.cv-columns` se declaraba a sí misma
+   contenedor y a la vez usaba `@container`, ninguna consulta se cumplía y la
+   rejilla se quedaba en `1fr` — todo apilado. */
+.cv-shell {
+  container-type: inline-size;
+}
+
+.cv-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* Los tres carriles son PROPORCIONALES CON MÍNIMO, no anchos fijos. Con
+   `290px` y `320px` rígidos el sobrante no lo absorbía nadie y se acumulaba
+   como una franja muerta a la derecha; ahora las tres columnas reparten todo
+   el ancho y el `minmax` solo garantiza que ninguna se estruje de más. */
+
+@container (min-width: 860px) {
+  /* Dos columnas: el trabajo a la izquierda, el contexto a la derecha. */
+  .cv-columns {
+    grid-template-columns: minmax(0, 1.9fr) minmax(280px, 1fr);
+  }
+}
+
+/* Umbral de tres columnas a 1120px. Una laptop de 1440px —de las más
+   comunes— deja un contenedor de ~1160px; con el umbral en 1180 se quedaba
+   en dos columnas por 20px y la tercera caía abajo, que es el hueco que se
+   veía. A 1120 entra con margen, y como los carriles son proporcionales el
+   ancho sobrante lo reparten ellos en lugar de acumularse en la orilla. */
+@container (min-width: 1120px) {
+  /* Tres carriles: acciones · herramientas · contexto. */
+  .cv-columns {
+    grid-template-columns:
+      minmax(250px, 0.85fr)
+      minmax(0, 1.7fr)
+      minmax(280px, 0.95fr);
+  }
+}
+
+/* Dos carriles, para el Inicio: lo tuyo de hoy a la izquierda, dónde ibas y
+   tus avisos a la derecha. El Inicio dejó de llevar el catálogo de
+   herramientas —vive en su propia sección— y con tres columnas quedaba una
+   hueca. */
+.cv-columns-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 22px;
+  align-items: start;
+}
+
+@container (min-width: 900px) {
+  .cv-columns-2 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  }
+}
+
+@supports not (container-type: inline-size) {
+  @media (min-width: 1180px) {
+    .cv-columns-2 {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    }
+  }
+}
+
+/* Respaldo para navegadores sin `@container`: se mide la ventana y se
+   descuenta la barra lateral (232px) más el padding (48px) a ojo. */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1140px) {
+    .cv-columns {
+      grid-template-columns: minmax(0, 1.9fr) minmax(280px, 1fr);
+    }
+  }
+  @media (min-width: 1460px) {
+    .cv-columns {
+      grid-template-columns:
+        minmax(250px, 0.85fr)
+        minmax(0, 1.7fr)
+        minmax(280px, 0.95fr);
+    }
+  }
+}
+
+/* ---------------------------------------------------- lista de herramientas --
+   Una fila por herramienta, dentro de una sola tarjeta. Sustituye a la pila de
+   tarjetas de 300px agrupadas por área: con una herramienta por área, aquello
+   generaba un encabezado y una ilustración por cada una y estiraba la columna
+   central muy por encima de las laterales.                                   */
+
+.cv-tool-list {
+  background: var(--cv-card);
+  border: 1px solid var(--cv-line);
+  border-radius: var(--cv-r-lg);
+  box-shadow: var(--cv-lift);
+  overflow: hidden;
+}
+
+.cv-tool-list > li + li {
+  border-top: 1px solid var(--cv-line-soft);
+}
+
+.cv-tool-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 16px 14px 19px;
+  text-decoration: none;
+  transition: background 0.22s ease;
+}
+
+.cv-tool-row:hover {
+  background: var(--cv-line-soft);
+}
+
+/* 3.0 · Al señalar, un lavado del color del producto entra desde la barra de
+   acento y se desvanece a media fila: la fila responde en SU color, no con un
+   gris genérico. Va en un pseudo-elemento para no tocar el fondo base. */
+.cv-tool-row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cv-tint, var(--cv-green)) 9%, transparent),
+    transparent 55%
+  );
+  opacity: 0;
+  transition: opacity 0.24s ease;
+}
+
+.cv-tool-row:hover::after {
+  opacity: 1;
+}
+
+/* El glifo saluda: una inclinación mínima, como asintiendo. */
+.cv-tool-glyph {
+  display: flex;
+  flex-shrink: 0;
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cv-tool-row:hover .cv-tool-glyph {
+  transform: scale(1.06) rotate(-2deg);
+}
+
+/* La barra del acento: el único elemento que se mueve. Se ensancha al señalar
+   en vez de desplazar la fila, que haría saltar el texto. */
+.cv-tool-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--cv-tint);
+  opacity: 0.45;
+  transition:
+    width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.24s ease;
+}
+
+.cv-tool-row:hover .cv-tool-bar {
+  width: 6px;
+  opacity: 1;
+}
+
+.cv-tool-arrow {
+  color: var(--cv-ink-4);
+  transition:
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.24s ease;
+}
+
+.cv-tool-row:hover .cv-tool-arrow {
+  transform: translateX(3px);
+  color: var(--cv-tint);
+}
+
+/* Quien pide menos animación conserva el color, que informa, y pierde solo el
+   desplazamiento. */
+@media (prefers-reduced-motion: reduce) {
+  .cv-tool-bar,
+  .cv-tool-arrow {
+    transition:
+      opacity 0.24s ease,
+      color 0.24s ease;
+  }
+  .cv-tool-row:hover .cv-tool-arrow {
+    transform: none;
+  }
+}
+
+/* La rejilla `.cv-tools-grid` se retiró: las herramientas ya no van en
+   tarjetas por área sino en `.cv-tool-list`, que es una sola tarjeta con una
+   fila por herramienta. */
+
+/* Enlace del menú lateral. */
+.cv-side-link {
+  position: relative;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+.cv-side-link:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+.cv-side-link[data-active]:hover {
+  background: rgba(55, 211, 91, 0.2) !important;
+}
+
+/* 3.0 · Riel luminoso: la sección activa lleva una barra verde pegada al
+   borde del panel, con halo. El `-10px` sale del padding del <nav>: el riel
+   toca el filo del aside, no el del enlace. */
+.cv-side-link[data-active]::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--cv-green-soft), var(--cv-green));
+  box-shadow: 0 0 14px rgba(55, 211, 91, 0.75);
+}
+
+.cv-side-toggle {
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+.cv-side-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cv-dk-2);
+}
+
+/* Tarjeta destacada: elevación mayor que las del explorador. */
+.cv-featured {
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease;
+}
+.cv-featured:hover {
+  transform: translateY(-5px);
+}
+
+/* Buscador de la barra. */
+.cv-search-btn {
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease;
+}
+.cv-search-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(55, 211, 91, 0.35) !important;
+}
+
+/* Tarea pendiente: se destaca al acercarse, invitando a resolverla. */
+.cv-task {
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+.cv-task:hover {
+  border-color: rgba(55, 211, 91, 0.45);
+  background: rgba(55, 211, 91, 0.04);
+  transform: translateX(3px);
+}
+
+/* Fila de favorita: se tiñe de verde al acercarse. */
+.cv-fav {
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+.cv-fav:hover {
+  border-color: rgba(55, 211, 91, 0.45);
+  background: rgba(55, 211, 91, 0.04);
+  transform: translateX(2px);
+}
+
+/* Chip de filtro por área. */
+.cv-chip-btn {
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
+}
+.cv-chip-btn:hover {
+  border-color: rgba(55, 211, 91, 0.45);
+}
+
+/* Botón "Entrar" de cada tarjeta. */
+.cv-enter {
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+.cv-enter:hover {
+  border-color: rgba(55, 211, 91, 0.5);
+  background: rgba(55, 211, 91, 0.07);
+  transform: translateX(1px);
+}
+
+/* Llamada a la acción sobre la tarjeta oscura. */
+.cv-cta {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.cv-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+/* =========================================================================
+   3.0 · LAS FIRMAS
+   ========================================================================= */
+
+/* ------------------------------------------------------- el cable vivo --
+   Una corriente de degradado verde→turquesa que fluye bajo la barra
+   superior. Es la "conexión" del nombre hecha visible: los colores de las
+   tres herramientas circulando por la plataforma que las une. */
+.cv-wire {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1.5px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--cv-green) 16%,
+    var(--cv-teal) 42%,
+    var(--cv-sea) 62%,
+    var(--cv-green) 86%,
+    transparent
+  );
+  background-size: 220% 100%;
+  opacity: 0.85;
+  animation: cv-wire 11s linear infinite;
+}
+
+@keyframes cv-wire {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+/* -------------------------------------------------- textura del manual --
+   La retícula de puntos que firma la portada del manual SOHERSA, para el
+   chrome oscuro. Se aplica junto a `background-color` (no al shorthand
+   `background`, que la pisaría). */
+.cv-chrome-dots {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 0
+  );
+  background-size: 26px 26px;
+}
+
+/* --------------------------------------------------- el anillo cónico --
+   Un borde de degradado que gira despacio alrededor de la tarjeta
+   destacada: la señal de "aquí es donde estabas". El truco de la máscara
+   deja visible solo el aro de 1.5px; el @supports evita que, sin soporte,
+   el conic se pinte como un relleno encima del contenido. */
+@supports (mask-composite: exclude) {
+  .cv-ring::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    z-index: 2;
+    pointer-events: none;
+    background: conic-gradient(
+      from var(--cv-angle),
+      rgba(55, 211, 91, 0.65),
+      rgba(29, 146, 168, 0.4) 28%,
+      rgba(55, 211, 91, 0.06) 55%,
+      rgba(20, 179, 147, 0.4) 78%,
+      rgba(55, 211, 91, 0.65)
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: cv-spin 16s linear infinite;
+  }
+}
+
+@keyframes cv-spin {
+  to {
+    --cv-angle: 360deg;
+  }
+}
+
+/* ------------------------------------------------------------- brillo --
+   Un destello que barre la llamada a la acción al señalarla. */
+.cv-cta {
+  position: relative;
+  overflow: hidden;
+}
+
+.cv-cta::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -70%;
+  width: 45%;
+  transform: skewX(-18deg);
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.32),
+    transparent
+  );
+  transition: left 0.55s ease;
+  pointer-events: none;
+}
+
+.cv-cta:hover::after {
+  left: 130%;
+}
+
+/* ------------------------------------------------------- utilidades 4.0 -- */
+
+/* Todo lo que es adorno y NO debe recibir clics.
+   Las auroras llevan `filter: blur(26px)`, y un desenfoque extiende la caja
+   que captura el ratón mucho más allá de lo que se ve: un círculo de 340px
+   con blur tapaba parte del menú lateral, así que había que insistir varias
+   veces para acertarle a un enlace. `aria-hidden` no basta —eso es para
+   lectores de pantalla—; lo que hace falta es `pointer-events: none`.
+
+   Se aplica por selector de atributo para cubrir de una vez todo lo
+   decorativo, presente y futuro, sin depender de acordarse en cada sitio. */
+[aria-hidden="true"] {
+  pointer-events: none;
+}
+
+/* Excepción: un icono decorativo DENTRO de un control sí forma parte del
+   área en la que se puede pulsar. Sin esto, el centro de los botones con
+   solo un icono dejaría de responder. */
+button [aria-hidden="true"],
+a [aria-hidden="true"],
+label [aria-hidden="true"],
+[role="switch"] [aria-hidden="true"] {
+  pointer-events: auto;
+}
+
+/* Tablero de horas: cifras arriba, desglose abajo. */
+.cv-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  gap: 14px;
+}
+
+.cv-dash-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 1020px) {
+  .cv-dash-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  }
+}
+
+/* Biblioteca de recursos: indice de secciones + lista. */
+.cv-rec-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .cv-rec-grid {
+    grid-template-columns: 250px minmax(0, 1fr);
+  }
+}
+
+/*
+ * Ausencias: saldo y vencimientos a la izquierda, calendario y solicitudes
+ * a la derecha.
+ *
+ * Mide el contenedor, no la ventana: con el menú abierto el área útil es
+ * ~250px más angosta, y una consulta por ventana partiría en dos columnas
+ * que ya no caben.
+ */
+.cv-aus-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@container (min-width: 940px) {
+  .cv-aus-grid {
+    grid-template-columns: minmax(280px, 0.92fr) minmax(0, 1.25fr);
+  }
+}
+
+/* El destacado del blog: ilustración a la izquierda, contenido a la derecha. */
+.cv-blog-featured {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 860px) {
+  .cv-blog-featured {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  }
+}
+
+/* Lista de publicaciones + carril lateral. */
+.cv-blog-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 26px;
+  align-items: start;
+}
+@media (min-width: 980px) {
+  .cv-blog-grid {
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  }
+}
+
+/* Las dos columnas del Inicio: pendientes a la izquierda, continuar a la
+   derecha. En pantallas angostas se apilan. */
+.cv-inicio-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 22px;
+  align-items: start;
+}
+@media (min-width: 980px) {
+  .cv-inicio-grid {
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+  }
+}
+
+/* Botón base del diseño: se levanta 1px al señalar, se asienta al pulsar. */
+.cv-btn {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+  cursor: pointer;
+  font-family: inherit;
+}
+.cv-btn:hover {
+  transform: translateY(-1px);
+}
+.cv-btn:active {
+  transform: translateY(0) scale(0.985);
+}
+
+/* Fila que responde al cursor con el gris del diseño, no con transformación. */
+.cv-row-h {
+  transition: background 0.16s ease;
+}
+.cv-row-h:hover {
+  background: var(--cv-hover);
+}
+
+/* Panel lateral que entra desde la derecha: avisos y detalle de ticket. */
+@keyframes cv-slide-r {
+  from {
+    transform: translateX(30px);
+    opacity: 0.3;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.cv-slide-r {
+  animation: cv-slide-r 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Toast del diseño: sube desde abajo. */
+@keyframes cv-toast {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.cv-toast {
+  animation: cv-toast 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ------------------------------------------------- movimiento reducido -- */
+@media (prefers-reduced-motion: reduce) {
+  .cv-rise,
+  .cv-pop {
+    animation: none !important;
+  }
+  .cv-card-i:hover,
+  .cv-fav:hover,
+  .cv-task:hover,
+  .cv-enter:hover,
+  .cv-featured:hover,
+  .cv-cta:hover {
+    transform: none;
+  }
+  /* Las firmas quedan quietas pero visibles: el color informa aunque no
+     fluya. */
+  .cv-wire,
+  .cv-ring::before {
+    animation: none !important;
+  }
+  .cv-cta::after {
+    display: none;
+  }
+  .cv-tool-row:hover .cv-tool-glyph {
+    transform: none;
+  }
+}
