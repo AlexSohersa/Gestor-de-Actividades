@@ -36,6 +36,13 @@ export type AbsenceView = {
   /// A quién se envió la solicitud para su visto bueno.
   sentTo: string | null;
   status: string;
+  /// De qué bloques salieron los días, cuando son vacaciones.
+  ///
+  /// Una solicitud puede repartirse entre varios: con 7 días en un bloque y 3
+  /// en otro, pedir 8 toma 7 del primero y 1 del segundo. Guardar solo un
+  /// "periodo" perdía el segundo, y con eso la posibilidad de saber de qué año
+  /// se tomaron unos días cuando las hojas ya no estén.
+  blocks?: { periodo: number; dias: number; vence: string | null }[];
 };
 
 /**
@@ -82,6 +89,7 @@ export const loadAusencias = cache(async function loadAusencias(
 
   const filas = await db.ausencia.findMany({
     where: { personaId },
+
     /*
      * Lo ÚLTIMO ENVIADO primero, no la ausencia más lejana.
      *
@@ -95,6 +103,12 @@ export const loadAusencias = cache(async function loadAusencias(
      */
     orderBy: [{ creadoEn: "desc" }, { fechaInicio: "desc" }],
     select: {
+      // De qué bloque salió cada día: es lo que permite reconstruir el
+      // reparto sin depender de las hojas.
+      bloques: {
+        select: { periodo: true, dias: true, venceEn: true },
+        orderBy: { periodo: "asc" },
+      },
       id: true,
       tipo: true,
       fechaInicio: true,
@@ -152,6 +166,13 @@ export const loadAusencias = cache(async function loadAusencias(
       // necesita saber ("¿quién me la tiene que aprobar?"); una vez resuelta,
       // quien la decidió suele ser la misma persona.
       sentTo: f.destinatario?.nombre ?? f.decisorPor?.nombre ?? null,
+      // De qué bloques salieron los días. Vacío en lo importado de la hoja:
+      // el gestor antiguo no guardaba ese detalle.
+      blocks: f.bloques.map((b) => ({
+        periodo: b.periodo,
+        dias: Number(b.dias),
+        vence: b.venceEn ? deFechaDia(b.venceEn) : null,
+      })),
       status: aEstadoPantalla(f.estado),
     })),
     usados: Math.round(usados * 100) / 100,

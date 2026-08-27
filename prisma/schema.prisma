@@ -141,6 +141,7 @@ model Ausencia {
   persona    Persona  @relation("AusenciaPersona", fields: [personaId], references: [id], onDelete: Cascade)
   destinatario Persona? @relation("AusenciaDestino", fields: [enviadaA], references: [id], onDelete: SetNull)
   decisorPor Persona? @relation("AusenciaDecisor", fields: [decididaPor], references: [id], onDelete: SetNull)
+  bloques    AusenciaBloque[]
 
   @@index([estado], map: "ausencia_estado_idx")
   @@index([personaId, fechaInicio(sort: Desc)], map: "ausencia_persona_idx")
@@ -239,6 +240,33 @@ model Checada {
 /// distintas (por ejemplo 10 días de entrada y 7 más al cumplir el año), así
 /// que la clave es un id propio y no (persona, periodo): fusionarlos perdía la
 /// distinción entre lo ya liberado y lo que todavía no toca.
+/// De qué bloque salió cada día de unas vacaciones.
+///
+/// Una solicitud puede repartirse entre varios: con 7 días en un bloque y 3 en
+/// otro, pedir 8 toma 7 del primero y 1 del segundo. La ausencia por sí sola
+/// solo podía apuntar UN periodo, así que el segundo se perdía.
+///
+/// Hace falta cuando las hojas desaparezcan: sin esto, nadie podría reconstruir
+/// de qué año se tomaron unas vacaciones, que es justo lo que Recursos Humanos
+/// necesita para cuadrar la prescripción de días.
+model AusenciaBloque {
+  id         String   @id
+  ausenciaId String   @map("ausencia_id")
+  saldoId    String   @map("saldo_id")
+  /// El periodo del bloque, copiado para que sobreviva aunque el bloque cambie.
+  periodo    Int
+  dias       Decimal  @db.Decimal(5, 2)
+  venceEn    DateTime? @map("vence_en") @db.Date
+  creadoEn   DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  ausencia Ausencia        @relation(fields: [ausenciaId], references: [id], onDelete: Cascade)
+  saldo    SaldoVacaciones @relation(fields: [saldoId], references: [id], onDelete: Restrict)
+
+  @@index([ausenciaId], map: "ausencia_bloque_ausencia_idx")
+  @@map("ausencia_bloque")
+  @@schema("actividad")
+}
+
 model SaldoVacaciones {
   id        String    @id
   personaId String    @map("persona_id")
@@ -261,7 +289,8 @@ model SaldoVacaciones {
   /// Cuándo se pierden los días no tomados de este bloque.
   venceEn   DateTime? @map("vence_en") @db.Date
 
-  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  persona Persona          @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  consumos AusenciaBloque[]
 
   @@index([personaId, venceEn], map: "saldo_vacaciones_persona_idx")
   @@map("saldo_vacaciones")

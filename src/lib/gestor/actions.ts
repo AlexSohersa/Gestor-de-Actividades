@@ -455,6 +455,7 @@ export async function cancelarAusencia(id: string): Promise<ResultadoAccion> {
 async function consumirVacaciones(
   personaId: string,
   dias: number,
+  ausenciaId: string,
 ): Promise<number | null> {
   if (dias <= 0) return null;
 
@@ -486,6 +487,29 @@ async function consumirVacaciones(
       data: { usados: { increment: toma } },
     });
 
+    /*
+     * Queda constancia de CUÁNTO salió de ESTE bloque.
+     *
+     * La ausencia sola solo puede apuntar un periodo, y unas vacaciones se
+     * reparten entre varios: con 7 días en un bloque y 3 en otro, pedir 8 toma
+     * 7 del primero y 1 del segundo. Sin esta fila, el segundo se perdía.
+     *
+     * Es lo que permitirá reconstruir de qué año salieron unos días cuando las
+     * hojas ya no estén.
+     */
+    await db.ausenciaBloque.create({
+      data: {
+        id: randomUUID(),
+        ausenciaId,
+        saldoId: b.id,
+        periodo: b.periodo,
+        dias: toma,
+        venceEn: b.venceEn,
+      },
+    });
+
+    // El que se devuelve es el PRIMERO, para la columna I de la hoja, que solo
+    // admite uno. El detalle completo está en `ausencia_bloque`.
     periodo ??= b.periodo;
     restan -= toma;
   }
@@ -583,7 +607,7 @@ export async function decidirAusencia(
       deFechaDia(ausencia.fechaFin),
     ).length;
 
-    const periodo = await consumirVacaciones(ausencia.personaId, dias);
+    const periodo = await consumirVacaciones(ausencia.personaId, dias, id);
     if (periodo !== null) {
       await db.ausencia.update({ where: { id }, data: { periodo } });
     }

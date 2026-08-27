@@ -1826,6 +1826,30 @@ export function AusenciasScreen({
                       : `${fmt(detalle.hours ?? 8)} h — día completo`,
                   ],
                   ["Enviada a", detalle.sentTo ?? "Sin destinatario"],
+                  /*
+                    De qué periodo salieron los días.
+
+                    Unas vacaciones pueden repartirse entre varios bloques: con
+                    7 días en uno y 3 en otro, pedir 8 toma 7 del primero y 1
+                    del segundo. Se enseña el reparto completo, no solo el
+                    primero, porque es lo que hace falta para cuadrar la
+                    prescripción de días cuando las hojas ya no estén.
+                  */
+                  ...(detalle.blocks && detalle.blocks.length > 0
+                    ? ([
+                        [
+                          detalle.blocks.length === 1
+                            ? "Periodo"
+                            : "Periodos",
+                          detalle.blocks
+                            .map(
+                              (b) =>
+                                `${fmt(b.dias)} ${b.dias === 1 ? "día" : "días"} del periodo ${b.periodo}`,
+                            )
+                            .join(" · "),
+                        ],
+                      ] as const)
+                    : []),
                 ] as const
               ).map(([k, val]) => (
                 <div key={k}>

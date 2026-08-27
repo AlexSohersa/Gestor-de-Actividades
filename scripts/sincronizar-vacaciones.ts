@@ -170,10 +170,17 @@ async function main() {
     /*
      * Si los vencimientos no cubren lo disponible, va un bloque sin fecha con
      * la diferencia: lo que importa es que la suma cuadre con la hoja.
+     *
+     * También entra cuando NO quedan días —saldo cero o negativo, de quien
+     * tomó más de lo liberado—: hace falta un bloque donde apuntar los días
+     * tomados, o la pantalla no puede decir "0 de 6" y muestra "0 de 0".
      */
     const enVivos = bloques.reduce((n, b) => n + b.dias, 0);
-    if (enVivos < disponibles) {
+    if (enVivos < disponibles || bloques.length === 0) {
       bloques.push({
+        // Puede ser NEGATIVO: hay quien tomó más días de los liberados, y la
+        // hoja lo refleja así. Redondearlo a cero ocultaría que esa persona
+        // está a deber.
         dias: disponibles - enVivos,
         usados: 0,
         vence: venc2 ?? venc1,
