@@ -48,10 +48,26 @@ export const authConfig: NextAuthConfig = {
       authorization: {
         params: {
           scope: GOOGLE_SCOPES.join(" "),
-          // offline + el refresh_token guardado en core.persona: sin esto no se
-          // puede escribir en Sheets cuando la persona no está mirando.
           access_type: "offline",
-          prompt: "select_account",
+          /*
+           * `consent`: Google vuelve a mostrar la pantalla de permisos.
+           *
+           * Es la ÚNICA forma de que entregue un `refresh_token`, y sin él no
+           * se puede escribir en las hojas ni mandar correo cuando la persona
+           * no está mirando.
+           *
+           * Con `select_account` —lo que había antes— Google solo lo manda la
+           * PRIMERA vez que alguien autoriza la aplicación. Quien ya la había
+           * autorizado en otra parte entraba sin token, y la columna
+           * `core.persona.google_refresco` se quedaba vacía para siempre: un
+           * círculo del que el sistema no sale solo. Es justo lo que pasó al
+           * desplegar, y lo que el portal ya había descubierto antes.
+           *
+           * La pantalla extra solo la ve quien todavía no tiene su token: en
+           * cuanto se guarda, el siguiente inicio de sesión vuelve a ser
+           * directo (ver `signIn` en index.ts).
+           */
+          prompt: "consent",
           include_granted_scopes: "true",
         },
       },

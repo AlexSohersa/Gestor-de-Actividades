@@ -531,24 +531,25 @@ export async function decidirAusencia(
    * Si no, dos coordinadores del mismo equipo podrían resolver lo que le
    * mandaron al otro.
    *
-   * Las solicitudes antiguas sin destinatario (importadas) las decide su
-   * coordinador del padrón, que es la única referencia que tienen.
+   * Las importadas de la hoja no llevan destinatario y NO se deciden aquí.
+   * Son solicitudes que nadie resolvió en el gestor antiguo —algunas de 2024—
+   * y aprobar hoy unas vacaciones de hace dos años descontaría saldo real por
+   * algo que ya pasó. Se quedan como historial.
    */
-  if (ausencia.enviadaA !== null) {
-    if (ausencia.enviadaA !== persona.id) {
-      return {
-        ok: false,
-        error: "Esa solicitud está dirigida a otra persona.",
-      };
-    }
-  } else {
-    const quien = await db.persona.findUnique({
-      where: { id: ausencia.personaId },
-      select: { coordinadorId: true },
-    });
-    if (quien?.coordinadorId !== persona.id) {
-      return { ok: false, error: "Esa solicitud no es de alguien a tu cargo." };
-    }
+  if (ausencia.enviadaA === null) {
+    return {
+      ok: false,
+      error:
+        "Esa solicitud viene del gestor anterior y ya no se decide aquí. " +
+        "Si sigue haciendo falta, pídela de nuevo.",
+    };
+  }
+
+  if (ausencia.enviadaA !== persona.id) {
+    return {
+      ok: false,
+      error: "Esa solicitud está dirigida a otra persona.",
+    };
   }
 
   // El filtro por estado dentro del propio update es lo que impide que dos

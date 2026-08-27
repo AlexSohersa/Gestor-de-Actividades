@@ -27,20 +27,22 @@ export default async function AusenciasPage() {
        * Lo que le toca decidir: las solicitudes que le MANDARON A ÉL.
        *
        * No las de su equipo: la solicitud se dirige a alguien concreto y es esa
-       * persona quien responde. Las antiguas sin destinatario (importadas) caen
-       * en su coordinador del padrón, que es la única referencia que tienen.
+       * persona quien responde.
+       *
+       * Y solo las pedidas DESDE ESTA HERRAMIENTA. Las importadas de la hoja
+       * (`sheet_sync = "hoja"`) no llevan destinatario, y hacerlas caer en el
+       * coordinador del padrón sacaba a la luz solicitudes de 2024 y 2025 que
+       * nadie decidió en su momento: quince en total, pidiendo aprobación dos
+       * años después. Eso no es una bandeja de trabajo, es ruido —y aprobar
+       * hoy unas vacaciones de hace dos años descontaría saldo de verdad.
+       *
+       * Quedan en la base como historial; solo dejan de pedir una decisión.
        */
       puedo
         ? db.ausencia.findMany({
             where: {
               estado: "PENDIENTE",
-              OR: [
-                { enviadaA: persona.id },
-                {
-                  enviadaA: null,
-                  persona: { coordinadorId: persona.id },
-                },
-              ],
+              enviadaA: persona.id,
             },
             select: {
               id: true,
