@@ -165,6 +165,22 @@ const PASOS: Paso[] = [
     ],
   },
   {
+    nombre: "actividad.ausencia_bloque · de qué periodo salió cada día",
+    comprobar: tabla("actividad", "ausencia_bloque"),
+    sql: [
+      `CREATE TABLE IF NOT EXISTS actividad.ausencia_bloque (
+         id           text PRIMARY KEY,
+         ausencia_id  text NOT NULL REFERENCES actividad.ausencia(id) ON DELETE CASCADE,
+         saldo_id     text NOT NULL REFERENCES actividad.saldo_vacaciones(id) ON DELETE RESTRICT,
+         periodo      integer NOT NULL,
+         dias         numeric(5,2) NOT NULL,
+         vence_en     date,
+         creado_en    timestamptz NOT NULL DEFAULT now())`,
+      `CREATE INDEX IF NOT EXISTS ausencia_bloque_ausencia_idx
+         ON actividad.ausencia_bloque (ausencia_id)`,
+    ],
+  },
+  {
     nombre: "core.resolver_persona · red de seguridad para persona_id",
     comprobar: `SELECT count(*)::int AS n FROM pg_proc p
                   JOIN pg_namespace n ON n.oid = p.pronamespace

@@ -98,12 +98,17 @@ model Hora {
 /// cotizadas vs registradas.
 model HoraCotizada {
   id             String  @id
-  proyectoCodigo String  @map("proyecto_codigo")
+  /// Puede ser NULL: hay filas cotizadas que llegaron sin proyecto.
+  ///
+  /// El schema lo declaraba obligatorio y la columna sí lo admite, así que
+  /// `/proyectos` reventaba al leerlas —27 filas en producción bastaban para
+  /// tumbar la pantalla entera—. Se declaran como son y el radar las omite.
+  proyectoCodigo String? @map("proyecto_codigo")
   entregable     String
   disciplina     String?
   horas          Decimal @db.Decimal(10, 2)
 
-  proyecto Proyecto @relation(fields: [proyectoCodigo], references: [codigo], onDelete: Cascade)
+  proyecto Proyecto? @relation(fields: [proyectoCodigo], references: [codigo], onDelete: Cascade)
 
   @@unique([proyectoCodigo, entregable, disciplina], map: "hora_cotizada_proyecto_codigo_entregable_disciplina_key")
   @@map("hora_cotizada")

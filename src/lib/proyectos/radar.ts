@@ -115,6 +115,9 @@ export const proyectosConHoras = cache(async function proyectosConHoras(): Promi
     }),
     db.horaCotizada.groupBy({
       by: ["proyectoCodigo"],
+      // Sin proyecto no hay nada contra qué cruzarlas, y su presencia tumbaba
+      // la pantalla entera.
+      where: { proyectoCodigo: { not: null } },
       _sum: { horas: true },
     }),
     db.proyecto.findMany({ select: { codigo: true, nombre: true } }),

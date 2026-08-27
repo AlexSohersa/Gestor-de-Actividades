@@ -34,6 +34,8 @@ export async function listarProyectos(): Promise<ProyectoEnLista[]> {
     }),
     db.horaCotizada.groupBy({
       by: ["proyectoCodigo"],
+      // Sin proyecto no hay nada contra qué cruzarlas.
+      where: { proyectoCodigo: { not: null } },
       _sum: { horas: true },
     }),
     db.proyecto.findMany({

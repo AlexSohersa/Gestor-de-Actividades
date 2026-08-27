@@ -422,8 +422,10 @@ export const cargarDashboard = cache(async function cargarDashboard(
 
   const cotPorProyecto = new Map<string, number>();
   for (const c of cotizadas) {
+    // Sin proyecto no hay con qué cruzar: hay filas cotizadas que llegaron sin
+    // él y se omiten, igual que las que no están en el padrón.
+    if (!c.proyectoCodigo) continue;
     const nombre = nombrePorCodigo.get(c.proyectoCodigo);
-    // Sin nombre en el padrón no hay con qué cruzar contra el desglose.
     if (!nombre) continue;
     cotPorProyecto.set(
       nombre,

@@ -303,7 +303,10 @@ export function AusenciasScreen({
                     relC: "var(--cv-ink-3)",
                   };
           return {
-            dias: Math.max(0, b.dias - b.usados),
+            // `dias` YA es lo que queda del bloque: la hoja oficial descuenta
+            // sola lo tomado. Restar `usados` encima lo contaba dos veces y un
+            // bloque de 4 días con 38 tomados en el historial salía como 0.
+            dias: b.dias,
             fecha: fechaLarga(b.vence),
             periodo: b.periodo ? `Periodo ${b.periodo}` : "Periodo en curso",
             rel: relativo(b.vence),

@@ -476,15 +476,32 @@ async function consumirVacaciones(
   for (const b of bloques) {
     if (restan <= 0) break;
 
-    // `dias` es lo que QUEDA del bloque y `usados` lo que ya se había
-    // descontado en el origen; lo libre es la diferencia.
-    const libres = Math.max(0, Number(b.dias) - Number(b.usados));
+    /*
+     * `dias` YA es lo que queda: la hoja oficial descuenta sola lo tomado, y
+     * `usados` es el histórico de esa persona, no una reserva sobre el bloque.
+     *
+     * Restarlo aquí impedía aprobar nada a quien tuviera muchos días en su
+     * historial: un bloque con 4 días libres y 38 tomados daba "0 libres", y
+     * esa persona no podía tomar vacaciones aunque las tuviera.
+     */
+    const libres = Number(b.dias);
     if (libres <= 0) continue;
 
     const toma = Math.min(libres, restan);
+
+    /*
+     * Los días salen de `dias` y se anotan en `usados`.
+     *
+     * Los dos a la vez: `dias` es lo que queda —y es de donde se descuenta— y
+     * `usados` lo tomado, que es lo que permite enseñar "10 de 12". Tocar solo
+     * uno descuadraría el total.
+     */
     await db.saldoVacaciones.update({
       where: { id: b.id },
-      data: { usados: { increment: toma } },
+      data: {
+        dias: { decrement: toma },
+        usados: { increment: toma },
+      },
     });
 
     /*
