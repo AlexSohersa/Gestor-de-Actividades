@@ -24,7 +24,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
 
-    async signIn({ user, account }) {
+        /**
+     * A dónde se vuelve después de iniciar sesión.
+     *
+     * Sin esto, NextAuth usa la dirección de `AUTH_URL`/`NEXTAUTH_URL`, y en
+     * Vercel esa variable puede traer la dirección `.vercel.app` del proyecto
+     * aunque la persona haya entrado por el subdominio propio. El resultado es
+     * que entra bien pero acaba en otra dirección, y ahí su cookie —emitida
+     * para `.sohersabim.com`— no vale: la siguiente herramienta le vuelve a
+     * pedir la cuenta.
+     *
+     * `baseUrl` es el sitio desde el que se pidió el inicio de sesión. Se
+     * respeta, y así la persona termina donde empezó.
+     */
+    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
+      // Una ruta relativa —"/hub"— se cuelga del sitio actual.
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+
+      /* Una dirección absoluta solo se acepta si es del mismo sitio o de un
+         subdominio hermano: así el salto entre herramientas sigue funcionando
+         y nadie puede usar esto para mandar a la gente fuera. */
+      try {
+        const destino = new URL(url);
+        const propio = new URL(baseUrl);
+        const raiz = process.env.AUTH_COOKIE_DOMAIN?.trim();
+
+        if (destino.host === propio.host) return url;
+        if (raiz && destino.hostname.endsWith(raiz.replace(/^\./, ""))) return url;
+      } catch {
+        // Si no es una dirección válida, se cae al caso seguro de abajo.
+      }
+
+      return baseUrl;
+    },
+
+async signIn({ user, account }) {
       if (account?.provider !== "google") return false;
       if (!user.email) return false;
       if (!esCorreoPermitido(user.email)) return false;
