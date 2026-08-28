@@ -211,12 +211,75 @@ async function anexar(
   const sheets = await clienteEscritura();
   if (!sheets) throw new Error("Sin credenciales de Google para escribir.");
 
-  await sheets.spreadsheets.values.append({
+  const r = await sheets.spreadsheets.values.append({
     spreadsheetId: libro,
     range: `${hoja}!A1`,
     valueInputOption: "USER_ENTERED",
     requestBody: { values: filas },
   });
+
+  /*
+   * La columna de HORAS se deja como número.
+   *
+   * Al anexar, Google copia el formato de la fila de arriba, y en la hoja de
+   * actividad eso hacía que las horas heredaran formato de FECHA: un 0.5 se
+   * veía como "30/12/1899". El valor guardado era correcto, pero quien mira la
+   * hoja veía fechas de 1899 en vez de horas, y al borrar una fila la búsqueda
+   * por horas no la encontraba nunca.
+   *
+   * Solo en `BDD ACTIVIDAD V02`, que es donde la columna C son horas.
+   */
+  if (hoja !== HOJAS.actividad) return;
+
+  const rango = r.data.updates?.updatedRange;
+  if (!rango) return;
+
+  // "BDD ACTIVIDAD V02!A1612:L1617" → las filas que acaba de escribir.
+  const m = rango.match(/!A(\d+):[A-Z]+(\d+)$/);
+  if (!m) return;
+
+  const libroInfo = await sheets.spreadsheets.get({ spreadsheetId: libro });
+  const props = libroInfo.data.sheets?.find(
+    (h) => h.properties?.title === hoja,
+  )?.properties;
+  if (props?.sheetId === undefined || props.sheetId === null) return;
+
+  await sheets.spreadsheets
+    .batchUpdate({
+      spreadsheetId: libro,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId: props.sheetId,
+                // La API cuenta desde 0 y el fin es exclusivo.
+                startRowIndex: Number(m[1]) - 1,
+                endRowIndex: Number(m[2]),
+                startColumnIndex: 2, // columna C
+                endColumnIndex: 3,
+              },
+              cell: {
+                userEnteredFormat: {
+                  // Un decimal, como quedó la hoja: así las medias horas se ven
+                  // "0.5" y las enteras "8.0", todas con el mismo aspecto.
+                  numberFormat: { type: "NUMBER", pattern: "0.0" },
+                },
+              },
+              fields: "userEnteredFormat.numberFormat",
+            },
+          },
+        ],
+      },
+    })
+    // Que no se caiga la subida por esto: las filas ya están escritas y su
+    // valor es correcto; lo único en juego es cómo se ven.
+    .catch((e: unknown) => {
+      console.error(
+        "[sync] No se pudo dar formato a las horas:",
+        e instanceof Error ? e.message : e,
+      );
+    });
 }
 
 /**
@@ -625,12 +688,30 @@ export async function quitarDeLaHoja(datos: {
   const s = await clienteEscritura();
   if (!s) return false;
 
-  const r = await s.spreadsheets.values.get({
-    spreadsheetId: BDD_MAESTRA,
-    range: `${HOJAS.actividad}!A:E`,
-    valueRenderOption: "FORMATTED_VALUE",
-  });
-  const filas = r.data.values ?? [];
+  /*
+   * Las HORAS se leen sin formato; la fecha, con él.
+   *
+   * Google puede tener la columna de horas con formato de fecha —lo arrastra
+   * del `append`—, y entonces un 0.5 se lee como "30/12/1899" y la
+   * comparación numérica no encuentra nunca la fila. El valor guardado sí es
+   * correcto, así que se pide crudo.
+   *
+   * La fecha, en cambio, se necesita como se ve: "27/8/2026".
+   */
+  const [conFormato, sinFormato] = await Promise.all([
+    s.spreadsheets.values.get({
+      spreadsheetId: BDD_MAESTRA,
+      range: `${HOJAS.actividad}!A:E`,
+      valueRenderOption: "FORMATTED_VALUE",
+    }),
+    s.spreadsheets.values.get({
+      spreadsheetId: BDD_MAESTRA,
+      range: `${HOJAS.actividad}!C:C`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    }),
+  ]);
+  const filas = conFormato.data.values ?? [];
+  const horasCrudas = sinFormato.data.values ?? [];
 
   const igual = (a: unknown, b: unknown) =>
     String(a ?? "").trim().toUpperCase() === String(b ?? "").trim().toUpperCase();
@@ -642,7 +723,9 @@ export async function quitarDeLaHoja(datos: {
     const f = filas[i] ?? [];
     if (dia === null || diaComparable(f[0]) !== dia) continue;
     if (!igual(f[1], datos.nombre)) continue;
-    if (Number(String(f[2] ?? "").replace(",", ".")) !== datos.horas) continue;
+    // Las horas, del valor crudo: el formateado puede venir como fecha.
+    const horasFila = Number(horasCrudas[i]?.[0] ?? NaN);
+    if (horasFila !== datos.horas) continue;
     if (datos.entregable && !igual(f[4], datos.entregable)) continue;
     encontrada = i;
     break;
