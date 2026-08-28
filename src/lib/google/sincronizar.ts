@@ -451,6 +451,12 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         periodo: true,
         persona: { select: { nombre: true, nombreUsuario: true, horasDia: true } },
         destinatario: { select: { nombre: true, nombreUsuario: true } },
+        // De qué bloque salió cada día: es lo que permite escribir el periodo
+        // correcto en cada renglón en vez de repetir el primero.
+        bloques: {
+          select: { periodo: true, dias: true },
+          orderBy: { periodo: "asc" },
+        },
       },
     });
 
@@ -464,6 +470,29 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         const horas = a.horas === null ? jornada : Number(a.horas);
         const decision = a.estado === "APROBADA" ? "PAGADO" : "NO AUTORIZADO";
 
+        /*
+         * El PERIODO de cada día, no el mismo para todos.
+         *
+         * Unas vacaciones se reparten entre bloques: con 4 días en el periodo
+         * 3 y el resto en el 4, los cuatro primeros renglones llevan un 3 y
+         * los siguientes un 4. Antes se repetía el primer periodo en todas las
+         * filas, y en la hoja parecía que los seis días salieron del mismo.
+         *
+         * Se consume en el mismo orden en que se descontaron —del bloque que
+         * antes vence—, que es como quedó guardado en `ausencia_bloque`.
+         */
+        const cola = a.bloques.map((b) => ({
+          periodo: b.periodo,
+          quedan: Number(b.dias),
+        }));
+
+        const periodoDelDia = (): string => {
+          const b = cola.find((x) => x.quedan > 0);
+          if (!b) return a.periodo === null ? "N/A" : String(a.periodo);
+          b.quedan -= 1;
+          return String(b.periodo);
+        };
+
         for (const dia of diasHabilesEntre(a.fechaInicio, a.fechaFin)) {
           filas.push([
             nombreDeHoja(a.persona),
@@ -474,7 +503,7 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
             decision,
             decision,
             a.destinatario ? nombreDeHoja(a.destinatario) : "",
-            a.periodo === null ? "N/A" : String(a.periodo),
+            periodoDelDia(),
           ]);
         }
       }
