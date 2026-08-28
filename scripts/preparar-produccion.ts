@@ -165,6 +165,34 @@ const PASOS: Paso[] = [
     ],
   },
   {
+    nombre: "actividad.hora_extra · el circuito de horas extra",
+    comprobar: tabla("actividad", "hora_extra"),
+    sql: [
+      `CREATE TABLE IF NOT EXISTS actividad.hora_extra (
+         id             text PRIMARY KEY,
+         persona_id     text NOT NULL REFERENCES core.persona(id) ON DELETE RESTRICT,
+         fecha          date NOT NULL,
+         horas          numeric(6,2) NOT NULL,
+         proyecto_codigo text REFERENCES core.proyecto(codigo) ON DELETE RESTRICT,
+         proyecto_texto text,
+         entregable     text, disciplina text, tipo text, esfuerzo text,
+         justificacion  text,
+         enviada_a      text REFERENCES core.persona(id) ON DELETE SET NULL,
+         estado         text NOT NULL DEFAULT 'PENDIENTE',
+         decidida_por   text REFERENCES core.persona(id) ON DELETE SET NULL,
+         decidida_en    timestamptz,
+         hora_id        text REFERENCES actividad.hora(id) ON DELETE SET NULL,
+         sheet_sync     text NOT NULL DEFAULT 'pendiente',
+         creado_en      timestamptz NOT NULL DEFAULT now(),
+         CONSTRAINT hora_extra_estado
+           CHECK (estado IN ('PENDIENTE','APROBADA','RECHAZADA')))`,
+      `CREATE INDEX IF NOT EXISTS hora_extra_enviada_idx
+         ON actividad.hora_extra (enviada_a, estado)`,
+      `CREATE INDEX IF NOT EXISTS hora_extra_persona_idx
+         ON actividad.hora_extra (persona_id, fecha DESC)`,
+    ],
+  },
+  {
     nombre: "actividad.ausencia_bloque · de qué periodo salió cada día",
     comprobar: tabla("actividad", "ausencia_bloque"),
     sql: [

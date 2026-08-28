@@ -195,13 +195,32 @@ export async function reportarHoras(
 
   revalidatePath("/actividad");
 
+  /*
+   * Las extra van por su propio circuito: quedan pendientes de visto bueno.
+   *
+   * No se guardan como horas hasta que alguien las aprueba; si no, contarían
+   * en los tableros antes de estar autorizadas.
+   */
   if (extras.length > 0) {
-    return {
-      ok: true,
-      aviso:
-        "Las horas normales quedaron registradas. Las horas extra todavía no " +
-        "se pueden enviar a aprobación desde aquí.",
-    };
+    for (const l of extras) {
+      await db.horaExtra.create({
+        data: {
+          id: randomUUID(),
+          personaId: persona.id,
+          fecha: dia,
+          horas: l.hours,
+          proyectoCodigo: codigo,
+          proyectoTexto: codigo ? null : proyecto,
+          entregable: l.deliverable,
+          disciplina: l.discipline || null,
+          tipo: l.kind || null,
+          esfuerzo: l.effort || null,
+          justificacion: l.comment.trim() || null,
+          enviadaA: aprobadorExtra,
+          estado: "PENDIENTE",
+        },
+      });
+    }
   }
 
   return { ok: true };
@@ -273,22 +292,82 @@ export async function borrarActividad(id: string): Promise<ResultadoAccion> {
 /**
  * Solicita horas extra.
  *
- * Pendiente: el circuito de aprobación de horas extra todavía no se migra. En
- * los datos de la hoja no aparece ninguna fila con envío EXTRA, así que no
- * había nada que traer; cuando se decida si sigue vivo, se implementa aquí.
+ * Van fuera de la jornada y las tiene que autorizar alguien, así que quedan
+ * PENDIENTES en su propia tabla sin tocar `actividad.hora`: unas horas sin
+ * aprobar no son horas trabajadas para ningún tablero. Al aprobarse se crean
+ * como hora con categoría EXTRA y suben a la hoja marcadas así.
+ *
+ * Decide SOLO la persona a quien se le mandaron. El gestor de siempre tenía un
+ * segundo filtro —un aprobador final fijo, escrito a mano en el script—, y se
+ * deja fuera a propósito: complica el circuito sin que nadie lo pidiera.
  */
-/* eslint-disable @typescript-eslint/no-unused-vars -- la firma se conserva
-   para que la pantalla copiada compile; el circuito no está implementado. */
 export async function solicitarExtra(
   form: FormData,
 ): Promise<ResultadoAccion> {
-  await exigirSeccion("actividad");
-  return {
-    ok: false,
-    error:
-      "Las horas extra todavía no están disponibles en esta herramienta. " +
-      "Repórtalas por el canal de siempre mientras tanto.",
-  };
+  const persona = await exigirSeccion("actividad");
+
+  const fecha = String(form.get("date") ?? "").trim();
+  const horas = Number(form.get("hours"));
+  const proyecto = String(form.get("project") ?? "").trim();
+  const entregable = String(form.get("deliverable") ?? "").trim() || null;
+  const tipo = String(form.get("kind") ?? "").trim() || null;
+  const disciplina = String(form.get("discipline") ?? "").trim() || null;
+  const esfuerzo = String(form.get("effort") ?? "").trim() || null;
+  const justificacion = String(form.get("detail") ?? "").trim();
+  const enviadaA = String(form.get("sentTo") ?? "").trim();
+
+  if (!fecha) return { ok: false, error: "Falta el día." };
+  if (!esDiaValido(fecha)) return { ok: false, error: "Esa fecha no es válida." };
+  if (!Number.isFinite(horas) || horas <= 0) {
+    return { ok: false, error: "Pon cuántas horas extra fueron." };
+  }
+  if (horas > 12) {
+    return { ok: false, error: "Son demasiadas horas para un solo día." };
+  }
+  if (!proyecto) return { ok: false, error: "Elige el proyecto." };
+  if (!justificacion) {
+    return {
+      ok: false,
+      error: "Explica por qué hicieron falta: es lo que mira quien las aprueba.",
+    };
+  }
+  if (!enviadaA) {
+    return { ok: false, error: "Elige a quién le mandas las horas extra." };
+  }
+  if (enviadaA === persona.id && !permiteAutoAprobacion()) {
+    return { ok: false, error: "No puedes mandártelas a ti mismo." };
+  }
+
+  const codigo = await codigoDeProyecto(proyecto);
+
+  /*
+   * Queda PENDIENTE, sin tocar `actividad.hora`.
+   *
+   * Unas horas extra sin autorizar no son horas trabajadas para ningún
+   * tablero: si se guardaran ya, contarían en los totales de la persona y en
+   * los del proyecto antes de que nadie las hubiera aprobado. La hora se crea
+   * al aprobarlas.
+   */
+  await db.horaExtra.create({
+    data: {
+      id: randomUUID(),
+      personaId: persona.id,
+      fecha: aFechaDia(fecha),
+      horas,
+      proyectoCodigo: codigo,
+      proyectoTexto: codigo ? null : proyecto,
+      entregable,
+      disciplina,
+      tipo,
+      esfuerzo,
+      justificacion,
+      enviadaA,
+      estado: "PENDIENTE",
+    },
+  });
+
+  revalidatePath("/actividad");
+  return { ok: true };
 }
 
 /** Decide una solicitud de horas extra. Ver la nota de `solicitarExtra`. */
@@ -296,13 +375,87 @@ export async function decidirExtra(
   id: string,
   decision: "APROBADO" | "RECHAZADO",
 ): Promise<ResultadoAccion> {
-  await exigirSeccion("actividad");
-  return {
-    ok: false,
-    error: "La aprobación de horas extra todavía no está disponible aquí.",
-  };
+  const persona = await exigirSeccion("actividad");
+
+  const extra = await db.horaExtra.findUnique({
+    where: { id },
+    select: {
+      personaId: true,
+      enviadaA: true,
+      fecha: true,
+      horas: true,
+      proyectoCodigo: true,
+      proyectoTexto: true,
+      entregable: true,
+      disciplina: true,
+      tipo: true,
+      esfuerzo: true,
+      justificacion: true,
+    },
+  });
+
+  if (!extra) return { ok: false, error: "Esa solicitud ya no existe." };
+
+  // Solo decide a quien se le mandaron, igual que en las ausencias.
+  if (extra.enviadaA !== persona.id) {
+    return { ok: false, error: "Esas horas están dirigidas a otra persona." };
+  }
+  if (extra.personaId === persona.id && !permiteAutoAprobacion()) {
+    return { ok: false, error: "No puedes decidir sobre tus propias horas." };
+  }
+
+  // El filtro por estado impide que dos personas decidan a la vez.
+  const r = await db.horaExtra.updateMany({
+    where: { id, estado: "PENDIENTE" },
+    data: {
+      estado: decision === "APROBADO" ? "APROBADA" : "RECHAZADA",
+      decididaPor: persona.id,
+      decididaEn: new Date(),
+    },
+  });
+
+  if (r.count === 0) {
+    return { ok: false, error: "Esas horas ya habían sido decididas." };
+  }
+
+  /*
+   * Al APROBAR, las horas pasan a ser horas de verdad.
+   *
+   * Se crean en `actividad.hora` con categoría EXTRA, que es lo que las
+   * distingue en la columna del envío de `BDD ACTIVIDAD V02` y lo que hace que
+   * el tablero pueda contarlas aparte de la jornada normal.
+   */
+  if (decision === "APROBADO") {
+    const horaId = randomUUID();
+    await db.hora.create({
+      data: {
+        id: horaId,
+        personaId: extra.personaId,
+        proyectoCodigo: extra.proyectoCodigo,
+        proyectoTexto: extra.proyectoTexto,
+        entregableTexto: extra.entregable,
+        fecha: extra.fecha,
+        horas: extra.horas,
+        disciplina: extra.disciplina,
+        tipo: extra.tipo,
+        esfuerzo: extra.esfuerzo,
+        comentario: extra.justificacion,
+        pago: "PAGADO",
+        categoria: "EXTRA",
+        quincena: quincenaDe(deFechaDia(extra.fecha)).numero,
+        origen: "app",
+      },
+    });
+    await db.horaExtra.update({ where: { id }, data: { horaId } });
+  }
+
+  revalidatePath("/actividad");
+
+  // Y a las hojas: la hora aprobada tiene que llegar al tablero de la empresa.
+  sincronizarEnSegundoPlano();
+
+  return { ok: true };
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /**
  * El código de un proyecto a partir de su nombre.

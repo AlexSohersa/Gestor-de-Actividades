@@ -9,13 +9,20 @@ import {
 } from "@/lib/gestor/dashboard";
 import { estadoHomeOffice } from "@/lib/gestor/homeoffice";
 import { sincronizarEnSegundoPlano } from "@/lib/google/sincronizar";
-import { aFechaDia, hoyEnMexico, lunesDe, sumarDias } from "@/lib/fechas";
+import { aFechaDia, hoyEnMexico, lunesDe, sumarDias, deFechaDia} from "@/lib/fechas";
 import { ActividadScreen } from "@/components/gestor/ActividadScreen";
 
 // Las horas cambian a cada rato y la pantalla es de uso personal: servir una
 // versión cacheada solo mostraría datos viejos.
 export const revalidate = 0;
 
+
+/** Lo que la base guarda → lo que la pantalla espera. */
+const ESTADO_EXTRA: Record<string, string> = {
+  PENDIENTE: "pendiente",
+  APROBADA: "aprobado",
+  RECHAZADA: "rechazado",
+};
 export default async function ActividadPage({
   searchParams,
 }: {
@@ -49,7 +56,15 @@ export default async function ActividadPage({
 
   const verEmpresa = veToda(persona);
 
-  const [horas, catalogos, aprobadores, tablero] = await Promise.all([
+  /*
+   * Las horas extra, en dos listas.
+   *
+   * Las SUYAS —para que vea en qué quedaron— y las que le MANDARON a él, que
+   * son las que tiene que decidir. Como en las ausencias, decide solo quien
+   * las recibió: tener el papel de coordinador no basta.
+   */
+  const [horas, catalogos, aprobadores, tablero, extras, porAprobar] =
+    await Promise.all([
     db.hora.findMany({
       where: {
         personaId: persona.id,
@@ -77,6 +92,25 @@ export default async function ActividadPage({
     necesitaTablero
       ? cargarDashboard(persona.id, verEmpresa, periodo)
       : cargarResumenSemana(persona.id, periodo, verEmpresa),
+    db.horaExtra.findMany({
+      where: { personaId: persona.id },
+      orderBy: { fecha: "desc" },
+      take: 60,
+      include: {
+        persona: { select: { nombre: true, nombreUsuario: true } },
+        destinatario: { select: { nombre: true, nombreUsuario: true } },
+        proyecto: { select: { nombre: true } },
+      },
+    }),
+    db.horaExtra.findMany({
+      where: { enviadaA: persona.id, estado: "PENDIENTE" },
+      orderBy: { fecha: "asc" },
+      include: {
+        persona: { select: { nombre: true, nombreUsuario: true } },
+        destinatario: { select: { nombre: true, nombreUsuario: true } },
+        proyecto: { select: { nombre: true } },
+      },
+    }),
   ]);
 
   // La checada está siempre: no depende de ningún permiso.
@@ -114,13 +148,34 @@ export default async function ActividadPage({
         // porque su origen es la hoja— y lo capturado aquí enseña si ya subió.
         sheetSync: h.origen === "hoja" ? "importado" : h.sheetSync,
       }))}
-      // Las horas extra todavía no se migran: en los datos de la hoja no hay
-      // una sola fila con envío EXTRA. Ver docs/PENDIENTE.md.
-      extras={[]}
-      porAprobar={[]}
+      extras={extras.map((e) => ({
+        id: e.id,
+        date: deFechaDia(e.fecha),
+        userName: e.persona.nombreUsuario ?? e.persona.nombre,
+        project: e.proyecto?.nombre ?? e.proyectoTexto ?? "",
+        deliverable: e.entregable ?? "",
+        hours: Number(e.horas),
+        reason: e.justificacion ?? "",
+        status: ESTADO_EXTRA[e.estado] ?? "pendiente",
+        approverName:
+          e.destinatario?.nombreUsuario ?? e.destinatario?.nombre ?? null,
+        isCourse: false,
+      }))}
+      porAprobar={porAprobar.map((e) => ({
+        id: e.id,
+        date: deFechaDia(e.fecha),
+        userName: e.persona.nombreUsuario ?? e.persona.nombre,
+        project: e.proyecto?.nombre ?? e.proyectoTexto ?? "",
+        deliverable: e.entregable ?? "",
+        hours: Number(e.horas),
+        reason: e.justificacion ?? "",
+        status: "pendiente",
+        approverName: null,
+        isCourse: false,
+      }))}
       catalogos={catalogos}
       aprobadores={aprobadores}
-      puedoAprobar={false}
+      puedoAprobar={porAprobar.length > 0}
       topeDia={persona.horasDia}
       estadoHO={estadoHO}
       tablero={tablero}

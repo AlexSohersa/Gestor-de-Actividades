@@ -45,29 +45,29 @@ datasource db {
 /// de proyecto que no existe en el padrón, se conserva en `proyecto_texto` para
 /// no perder el dato ni romper la clave foránea.
 model Hora {
-  id             String   @id
-  personaId      String   @map("persona_id")
-  proyectoCodigo String?  @map("proyecto_codigo")
-  entregableId   String?  @map("entregable_id")
-  fecha          DateTime @db.Date
-  horas          Decimal  @db.Decimal(6, 2)
-  disciplina     String?
-  tipo           String?
-  esfuerzo       String?
-  comentario     String?
+  id              String   @id
+  personaId       String   @map("persona_id")
+  proyectoCodigo  String?  @map("proyecto_codigo")
+  entregableId    String?  @map("entregable_id")
+  fecha           DateTime @db.Date
+  horas           Decimal  @db.Decimal(6, 2)
+  disciplina      String?
+  tipo            String?
+  esfuerzo        String?
+  comentario      String?
   /// Columna I de la hoja: ¿PAGAR? ("PAGADO", "NO AUTORIZADO"…).
-  pago           String?
+  pago            String?
   /// Columna J de la hoja, el ENVÍO: "NORMAL", "EXTRA" o "AUSENCIA".
   ///
   /// Es lo que separa una hora normal de una extra o de una ausencia. El
   /// `tipo` NO sirve para esto: ese es el catálogo de actividad (MODELADO,
   /// REVISIÓN…) y nunca vale "EXTRA", así que el contador de horas extra
   /// salía siempre en cero.
-  categoria      String   @default("NORMAL")
-  quincena       Int?
+  categoria       String   @default("NORMAL")
+  quincena        Int?
   /// De dónde salió la fila: "hoja" (importada del spreadsheet) o "app".
-  origen         String   @default("app")
-  proyectoTexto  String?  @map("proyecto_texto")
+  origen          String   @default("app")
+  proyectoTexto   String?  @map("proyecto_texto")
   /// El nombre del entregable tal como venía en la hoja.
   ///
   /// Existe por la misma razón que `proyectoTexto`: core.entregable solo tiene
@@ -75,16 +75,17 @@ model Hora {
   /// están en el padrón. Sin esta columna, esas horas perderían contra qué se
   /// trabajó — que es justo lo que el radar necesita para cruzar registradas
   /// contra cotizadas.
-  entregableTexto String? @map("entregable_texto")
+  entregableTexto String?  @map("entregable_texto")
   /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
   /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
-  sheetSync      String   @default("pendiente") @map("sheet_sync")
-  creadoEn       DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
-  actualizadoEn  DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  sheetSync       String   @default("pendiente") @map("sheet_sync")
+  creadoEn        DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn   DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
 
   persona    Persona     @relation(fields: [personaId], references: [id], onDelete: Restrict)
   proyecto   Proyecto?   @relation(fields: [proyectoCodigo], references: [codigo], onDelete: Restrict)
   entregable Entregable? @relation(fields: [entregableId], references: [id], onDelete: SetNull)
+  horaExtras HoraExtra[]
 
   @@index([fecha(sort: Desc)], map: "hora_fecha_idx")
   @@index([personaId, fecha(sort: Desc)], map: "hora_persona_fecha_idx")
@@ -117,36 +118,36 @@ model HoraCotizada {
 
 /// Vacaciones, permisos e incapacidades.
 model Ausencia {
-  id          String    @id
-  personaId   String    @map("persona_id")
-  tipo        String
-  fechaInicio DateTime  @map("fecha_inicio") @db.Date
-  fechaFin    DateTime  @map("fecha_fin") @db.Date
-  medioDia    Boolean   @default(false) @map("medio_dia")
-  horas       Decimal?  @db.Decimal(5, 2)
-  motivo      String?
+  id            String    @id
+  personaId     String    @map("persona_id")
+  tipo          String
+  fechaInicio   DateTime  @map("fecha_inicio") @db.Date
+  fechaFin      DateTime  @map("fecha_fin") @db.Date
+  medioDia      Boolean   @default(false) @map("medio_dia")
+  horas         Decimal?  @db.Decimal(5, 2)
+  motivo        String?
   /// PENDIENTE · APROBADA · RECHAZADA (restricción CHECK en la base).
-  estado      String    @default("PENDIENTE")
+  estado        String    @default("PENDIENTE")
   /// A QUIÉN se le mandó para su visto bueno.
   ///
   /// Solo esa persona puede decidirla. Deducir el aprobador del coordinador
   /// del padrón dejaba que cualquier coordinador de esa persona la resolviera,
   /// aunque la solicitud fuera dirigida a otro.
-  enviadaA    String?   @map("enviada_a")
-  decididaPor String?   @map("decidida_por")
-  decididaEn  DateTime? @map("decidida_en") @db.Timestamptz(6)
+  enviadaA      String?   @map("enviada_a")
+  decididaPor   String?   @map("decidida_por")
+  decididaEn    DateTime? @map("decidida_en") @db.Timestamptz(6)
   /// Periodo de vacaciones del que se descontaron los días.
   /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
   /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
-  sheetSync   String    @default("pendiente") @map("sheet_sync")
-  periodo     Int?
-  creadoEn    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
-  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  sheetSync     String    @default("pendiente") @map("sheet_sync")
+  periodo       Int?
+  creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
 
-  persona    Persona  @relation("AusenciaPersona", fields: [personaId], references: [id], onDelete: Cascade)
-  destinatario Persona? @relation("AusenciaDestino", fields: [enviadaA], references: [id], onDelete: SetNull)
-  decisorPor Persona? @relation("AusenciaDecisor", fields: [decididaPor], references: [id], onDelete: SetNull)
-  bloques    AusenciaBloque[]
+  persona      Persona          @relation("AusenciaPersona", fields: [personaId], references: [id], onDelete: Cascade)
+  destinatario Persona?         @relation("AusenciaDestino", fields: [enviadaA], references: [id], onDelete: SetNull)
+  decisorPor   Persona?         @relation("AusenciaDecisor", fields: [decididaPor], references: [id], onDelete: SetNull)
+  bloques      AusenciaBloque[]
 
   @@index([estado], map: "ausencia_estado_idx")
   @@index([personaId, fechaInicio(sort: Desc)], map: "ausencia_persona_idx")
@@ -161,34 +162,34 @@ model Ausencia {
 /// Sigue el modelo del gestor de siempre: folio correlativo, prioridad, equipo
 /// afectado y los cuatro estados por los que pasa una incidencia.
 model Ticket {
-  id          String    @id
+  id            String    @id
   /// Correlativo del folio: TCK-001, TCK-002… Lo asigna la base.
-  numero      Int       @unique(map: "ticket_numero_key") @default(autoincrement())
-  personaId   String    @map("persona_id")
-  titulo      String
-  detalle     String?
+  numero        Int       @unique(map: "ticket_numero_key") @default(autoincrement())
+  personaId     String    @map("persona_id")
+  titulo        String
+  detalle       String?
   /// SOFTWARE · HARDWARE
-  clase       String?
-  falla       String?
+  clase         String?
+  falla         String?
   /// ALTA · MEDIA · BAJA (restricción CHECK en la base).
-  prioridad   String    @default("MEDIA")
+  prioridad     String    @default("MEDIA")
   /// EN_REVISION · EN_PROCESO · EN_ESPERA · RESUELTO (restricción CHECK).
-  estado      String    @default("EN_REVISION")
+  estado        String    @default("EN_REVISION")
   /// El equipo afectado y su AnyDesk, para poder atenderlo en remoto.
-  equipo      String?
-  anydesk     String?
+  equipo        String?
+  anydesk       String?
   /// Id del caso en Dynamics 365, cuando el puente está encendido.
-  dynamicsId  String?   @map("dynamics_id")
-  atendidoPor String?   @map("atendido_por")
+  dynamicsId    String?   @map("dynamics_id")
+  atendidoPor   String?   @map("atendido_por")
   /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
   /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
-  sheetSync   String    @default("pendiente") @map("sheet_sync")
-  creadoEn    DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
-  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
-  cerradoEn   DateTime? @map("cerrado_en") @db.Timestamptz(6)
+  sheetSync     String    @default("pendiente") @map("sheet_sync")
+  creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  cerradoEn     DateTime? @map("cerrado_en") @db.Timestamptz(6)
 
-  persona  Persona  @relation("TicketPersona", fields: [personaId], references: [id], onDelete: Restrict)
-  atendida Persona? @relation("TicketAtiende", fields: [atendidoPor], references: [id], onDelete: SetNull)
+  persona  Persona        @relation("TicketPersona", fields: [personaId], references: [id], onDelete: Restrict)
+  atendida Persona?       @relation("TicketAtiende", fields: [atendidoPor], references: [id], onDelete: SetNull)
   eventos  TicketEvento[]
 
   @@index([estado, creadoEn(sort: Desc)], map: "ticket_estado_idx")
@@ -219,16 +220,16 @@ model TicketEvento {
 
 /// Entrada y salida de home office. Una fila por persona y día.
 model Checada {
-  id        String    @id
-  personaId String    @map("persona_id")
-  fecha     DateTime  @db.Date
-  entrada   DateTime? @db.Timestamptz(6)
-  salida    DateTime? @db.Timestamptz(6)
+  id            String    @id
+  personaId     String    @map("persona_id")
+  fecha         DateTime  @db.Date
+  entrada       DateTime? @db.Timestamptz(6)
+  salida        DateTime? @db.Timestamptz(6)
   /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
   /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
-  sheetSync String    @default("pendiente") @map("sheet_sync")
-  creadoEn  DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
-  actualizadoEn DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  sheetSync     String    @default("pendiente") @map("sheet_sync")
+  creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
 
   persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
 
@@ -255,14 +256,14 @@ model Checada {
 /// de qué año se tomaron unas vacaciones, que es justo lo que Recursos Humanos
 /// necesita para cuadrar la prescripción de días.
 model AusenciaBloque {
-  id         String   @id
-  ausenciaId String   @map("ausencia_id")
-  saldoId    String   @map("saldo_id")
+  id         String    @id
+  ausenciaId String    @map("ausencia_id")
+  saldoId    String    @map("saldo_id")
   /// El periodo del bloque, copiado para que sobreviva aunque el bloque cambie.
   periodo    Int
-  dias       Decimal  @db.Decimal(5, 2)
+  dias       Decimal   @db.Decimal(5, 2)
   venceEn    DateTime? @map("vence_en") @db.Date
-  creadoEn   DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  creadoEn   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
 
   ausencia Ausencia        @relation(fields: [ausenciaId], references: [id], onDelete: Cascade)
   saldo    SaldoVacaciones @relation(fields: [saldoId], references: [id], onDelete: Restrict)
@@ -272,29 +273,74 @@ model AusenciaBloque {
   @@schema("actividad")
 }
 
+/// Una solicitud de horas EXTRA, a la espera de visto bueno.
+///
+/// No son horas normales: van fuera de la jornada, las tiene que autorizar
+/// alguien, y hasta entonces no cuentan en ningún tablero. Por eso viven
+/// aparte de `actividad.hora` y solo pasan a ella cuando se aprueban.
+///
+/// El circuito es el del gestor de siempre: se piden eligiendo a quién, esa
+/// persona las aprueba o las rechaza, y al aprobarse la hora aparece en
+/// `BDD ACTIVIDAD V02` marcada como `EXTRA` en la columna del envío.
+model HoraExtra {
+  id             String    @id
+  personaId      String    @map("persona_id")
+  fecha          DateTime  @db.Date
+  horas          Decimal   @db.Decimal(6, 2)
+  proyectoCodigo String?   @map("proyecto_codigo")
+  /// El nombre del proyecto cuando no está en el padrón, como en `hora`.
+  proyectoTexto  String?   @map("proyecto_texto")
+  entregable     String?
+  disciplina     String?
+  tipo           String?
+  esfuerzo       String?
+  /// Por qué hicieron falta: es lo que mira quien las autoriza.
+  justificacion  String?
+  /// A quién se le mandaron. Solo esa persona puede decidirlas.
+  enviadaA       String?   @map("enviada_a")
+  estado         String    @default("PENDIENTE")
+  decididaPor    String?   @map("decidida_por")
+  decididaEn     DateTime? @map("decidida_en") @db.Timestamptz(6)
+  /// La hora que se creó al aprobarlas. Null mientras no se decidan.
+  horaId         String?   @map("hora_id")
+  sheetSync      String    @default("pendiente") @map("sheet_sync")
+  creadoEn       DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  persona      Persona   @relation("ExtraPersona", fields: [personaId], references: [id], onDelete: Restrict)
+  destinatario Persona?  @relation("ExtraDestino", fields: [enviadaA], references: [id], onDelete: SetNull)
+  decisorPor   Persona?  @relation("ExtraDecisor", fields: [decididaPor], references: [id], onDelete: SetNull)
+  proyecto     Proyecto? @relation(fields: [proyectoCodigo], references: [codigo], onDelete: Restrict)
+  hora         Hora?     @relation(fields: [horaId], references: [id], onDelete: SetNull)
+
+  @@index([enviadaA, estado], map: "hora_extra_enviada_idx")
+  @@index([personaId, fecha(sort: Desc)], map: "hora_extra_persona_idx")
+  @@map("hora_extra")
+  @@schema("actividad")
+}
+
 model SaldoVacaciones {
-  id        String    @id
-  personaId String    @map("persona_id")
-  periodo   Int
-  dias      Decimal   @default(0) @db.Decimal(5, 2)
+  id         String    @id
+  personaId  String    @map("persona_id")
+  periodo    Int
+  dias       Decimal   @default(0) @db.Decimal(5, 2)
   /// Días de este bloque YA consumidos antes del corte.
   ///
   /// El origen guarda en `dias` lo que QUEDA, no lo otorgado: ya venía con las
   /// ausencias descontadas. Sin esta referencia, derivar el consumo de las
   /// ausencias importadas lo restaría por segunda vez.
-  usados    Decimal   @default(0) @db.Decimal(5, 2)
+  usados     Decimal   @default(0) @db.Decimal(5, 2)
   /// Hasta qué fecha está ya reflejado el consumo en `dias`.
   ///
   /// Las ausencias ANTERIORES a esta fecha no vuelven a descontar; las
   /// posteriores —las que se piden desde esta herramienta— sí.
-  corte     DateTime? @db.Date
+  corte      DateTime? @db.Date
   /// Cuándo se pueden empezar a tomar. Null o pasada = ya disponibles; futura
   /// = otorgados pero aún no liberados, y NO cuentan como disponibles.
   liberadoEn DateTime? @map("liberado_en") @db.Date
   /// Cuándo se pierden los días no tomados de este bloque.
-  venceEn   DateTime? @map("vence_en") @db.Date
+  venceEn    DateTime? @map("vence_en") @db.Date
 
-  persona Persona          @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  persona  Persona          @relation(fields: [personaId], references: [id], onDelete: Cascade)
   consumos AusenciaBloque[]
 
   @@index([personaId, venceEn], map: "saldo_vacaciones_persona_idx")
@@ -313,30 +359,30 @@ model SaldoVacaciones {
 /// `PersonaCorreo` (uno principal por persona) y la búsqueda se hace así:
 ///   where: { correos: { some: { correo: email.toLowerCase() } } }
 model Persona {
-  id            String    @id
-  nombre        String
-  nombreUsuario String?   @map("nombre_usuario")
-  numero        String?   @unique
-  puesto        String?
-  area          String?
+  id             String    @id
+  nombre         String
+  nombreUsuario  String?   @map("nombre_usuario")
+  numero         String?   @unique
+  puesto         String?
+  area           String?
   /// Jornada diaria. NO es 8 para todos: hay jornadas de 4 y 5 horas.
-  horasDia      Decimal   @default(8) @map("horas_dia") @db.Decimal(4, 2)
-  fechaIngreso  DateTime? @map("fecha_ingreso") @db.Date
-  celular       String?
-  foto          String?
+  horasDia       Decimal   @default(8) @map("horas_dia") @db.Decimal(4, 2)
+  fechaIngreso   DateTime? @map("fecha_ingreso") @db.Date
+  celular        String?
+  foto           String?
   /// Quién aprueba sus ausencias y horas extra.
-  coordinadorId String?   @map("coordinador_id")
+  coordinadorId  String?   @map("coordinador_id")
   /// COLABORADOR · EXTERNO · SISTEMA
-  tipo          String    @default("COLABORADOR")
-  activo        Boolean   @default(true)
+  tipo           String    @default("COLABORADOR")
+  activo         Boolean   @default(true)
   /// Administrador de la plataforma: ve a toda la empresa y edita permisos.
-  esAdmin       Boolean   @default(false) @map("es_admin")
+  esAdmin        Boolean   @default(false) @map("es_admin")
   /// refresh_token de Google. Se guarda porque Google solo lo entrega en el
   /// primer consentimiento y hace falta para escribir en Sheets en su nombre.
-  googleRefresco String?  @map("google_refresco")
-  creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
-  actualizadoEn DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
-  origen        String    @default("hoja")
+  googleRefresco String?   @map("google_refresco")
+  creadoEn       DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn  DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  origen         String    @default("hoja")
 
   coordinador Persona?  @relation("Coordinacion", fields: [coordinadorId], references: [id], onDelete: SetNull)
   coordinados Persona[] @relation("Coordinacion")
@@ -349,6 +395,9 @@ model Persona {
   ausencias          Ausencia[]        @relation("AusenciaPersona")
   ausenciasRecibidas Ausencia[]        @relation("AusenciaDestino")
   ausenciasDecididas Ausencia[]        @relation("AusenciaDecisor")
+  extras             HoraExtra[]       @relation("ExtraPersona")
+  extrasRecibidas    HoraExtra[]       @relation("ExtraDestino")
+  extrasDecididas    HoraExtra[]       @relation("ExtraDecisor")
   tickets            Ticket[]          @relation("TicketPersona")
   ticketsAtendidos   Ticket[]          @relation("TicketAtiende")
   eventosTicket      TicketEvento[]
@@ -401,6 +450,7 @@ model Proyecto {
   entregables Entregable[]
   horas       Hora[]
   cotizadas   HoraCotizada[]
+  horaExtras  HoraExtra[]
 
   @@index([clienteId], map: "proyecto_cliente_idx")
   @@index([estado], map: "proyecto_estado_idx")
