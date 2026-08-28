@@ -893,6 +893,9 @@ export function ActividadScreen({
                     onClick={() =>
                       startTransition(async () => {
                         await decidirExtra(e.id, "APROBADO");
+                        // Sin esto la solicitud decidida se quedaba en la
+                        // bandeja hasta recargar a mano.
+                        router.refresh();
                       })
                     }
                     className="cv-btn"
@@ -917,6 +920,9 @@ export function ActividadScreen({
                     onClick={() =>
                       startTransition(async () => {
                         await decidirExtra(e.id, "RECHAZADO");
+                        // Sin esto la solicitud decidida se quedaba en la
+                        // bandeja hasta recargar a mano.
+                        router.refresh();
                       })
                     }
                     className="cv-btn"
@@ -2963,7 +2969,16 @@ function FormExtra({
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 6 }}
                 >
-                  {mios.slice(0, 5).map((e) => {
+                  {/*
+                    Las PENDIENTES, todas.
+                    Antes se cortaba en cinco, así que a partir de la sexta la
+                    persona no veía lo que había mandado. Son pocas por
+                    naturaleza —lo decidido baja al resumen de abajo—, así que
+                    no hay nada que recortar.
+                  */}
+                  {mios
+                    .filter((e) => e.status === "pendiente")
+                    .map((e) => {
                     const st = ST[e.status] ?? ST.pendiente;
                     return (
                       <span
@@ -3001,6 +3016,54 @@ function FormExtra({
                       </span>
                     );
                   })}
+
+                  {/*
+                    Lo ya decidido, en una sola línea.
+                    Ocupa lo mínimo y deja constancia de que se resolvió: sin
+                    esto, una solicitud aprobada desaparecía sin más y no había
+                    dónde comprobar en qué quedó.
+                  */}
+                  {(() => {
+                    const decididas = mios.filter(
+                      (e) => e.status !== "pendiente",
+                    );
+                    if (decididas.length === 0) return null;
+
+                    const aprobadas = decididas.filter(
+                      (e) => e.status === "APROBADO",
+                    );
+                    const horas = aprobadas.reduce((n, e) => n + e.hours, 0);
+                    const rechazadas = decididas.length - aprobadas.length;
+
+                    return (
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 10.5,
+                          color: "var(--cv-ink-4)",
+                          borderTop: "1px solid var(--cv-line-soft)",
+                          paddingTop: 7,
+                          marginTop: 1,
+                        }}
+                      >
+                        {aprobadas.length > 0 && (
+                          <span style={{ color: "#178A49", fontWeight: 600 }}>
+                            {aprobadas.length} aprobada
+                            {aprobadas.length === 1 ? "" : "s"} · {fmt(horas)} h
+                          </span>
+                        )}
+                        {rechazadas > 0 && (
+                          <span style={{ color: "#B23A40", fontWeight: 600 }}>
+                            {rechazadas} rechazada{rechazadas === 1 ? "" : "s"}
+                          </span>
+                        )}
+                        <span style={{ flex: 1 }} />
+                        <span>ya en tu semana</span>
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             )}

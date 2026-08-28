@@ -18,10 +18,18 @@ export const revalidate = 0;
 
 
 /** Lo que la base guarda → lo que la pantalla espera. */
+/**
+ * Lo que la base guarda → lo que la pantalla espera.
+ *
+ * Las claves de destino son las que usa `ST` en `ActividadScreen`, y van en
+ * MAYÚSCULAS salvo "pendiente". Enviarlas en minúsculas hacía que no
+ * coincidieran y todo cayera al valor por defecto: una solicitud aprobada
+ * seguía viéndose como "Por aprobar".
+ */
 const ESTADO_EXTRA: Record<string, string> = {
   PENDIENTE: "pendiente",
-  APROBADA: "aprobado",
-  RECHAZADA: "rechazado",
+  APROBADA: "APROBADO",
+  RECHAZADA: "RECHAZADO",
 };
 export default async function ActividadPage({
   searchParams,
