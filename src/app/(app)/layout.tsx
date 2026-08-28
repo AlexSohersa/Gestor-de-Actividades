@@ -5,6 +5,8 @@ import {
   registrarVisitaWired,
 } from "@/modules/identidad/infrastructure/wiring";
 import { veToda } from "@/modules/identidad/domain/persona.entity";
+import { estadoDeAcceso, urlDelPortal } from "@/lib/portal/acceso";
+import { SinAcceso } from "@/components/SinAcceso";
 
 /**
  * El andamiaje de la herramienta: barra superior, menú lateral y lienzo.
@@ -21,6 +23,15 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  /* Quién reparte las herramientas es el portal, no cada herramienta. Se
+     comprueba aquí —antes de dibujar nada— porque esconder la tarjeta en el
+     Core no protege la dirección: se puede escribir a mano, o quedar en un
+     marcador de cuando sí se podía entrar. */
+  const acceso = await estadoDeAcceso();
+  if (acceso && !acceso.puede) {
+    return <SinAcceso correo={acceso.correo} urlPortal={urlDelPortal()} />;
+  }
+
   const persona = await exigirPersona();
   const esAdmin = veToda(persona);
 

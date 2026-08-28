@@ -32,9 +32,42 @@ export const GOOGLE_SCOPES = [
  *   2. Que el callback de sesión busque a la persona por CORREO, no por id:
  *      cada app tiene sus propios ids y no coinciden.
  *
- * En producción hace falta además un dominio común (.sohersa.com).
+ * En producción hace falta además un dominio común, y eso es lo que aporta
+ * AUTH_COOKIE_DOMAIN.
  */
 const PREFIJO_COOKIE = "authjs";
+
+/** En producción todo va por HTTPS, y las cookies lo dicen. */
+const seguras = process.env.NODE_ENV === "production";
+
+/**
+ * El dominio con el que se emite la cookie de sesión.
+ *
+ * Sin esto la cookie vale solo para el host exacto que la puso
+ * —`gestor-actividad.sohersabim.com`— y el navegador no se la enseña a las
+ * demás herramientas: cada una vuelve a pedir la cuenta. Con
+ * `.sohersabim.com` vale para todos los subdominios y la sesión viaja.
+ *
+ * Vacío en local: ahí las cookies ya se comparten por dominio —el puerto no
+ * cuenta— y fijar uno lo rompería.
+ */
+const DOMINIO_COOKIE = process.env.AUTH_COOKIE_DOMAIN?.trim() || undefined;
+
+/**
+ * Opciones comunes. `domain` solo se pone si hay uno definido.
+ *
+ * Antes la cookie de sesión se declaraba solo con su nombre, sin prefijo
+ * `__Secure-` en producción. El portal sí lo pone, así que los nombres no
+ * coincidían y una sesión emitida allá no se reconocía aquí: justo lo que
+ * el inicio de sesión único quiere evitar.
+ */
+const baseCookie = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  path: "/",
+  secure: seguras,
+  ...(DOMINIO_COOKIE ? { domain: DOMINIO_COOKIE } : {}),
+};
 
 /**
  * Configuración base — SIN el adaptador de Prisma, para que pueda evaluarse en
@@ -67,7 +100,30 @@ export const authConfig: NextAuthConfig = {
   ],
   pages: { signIn: "/login", error: "/login" },
   cookies: {
-    sessionToken: { name: `${PREFIJO_COOKIE}.session-token` },
+    sessionToken: {
+      name: `${seguras ? "__Secure-" : ""}${PREFIJO_COOKIE}.session-token`,
+      options: { ...baseCookie },
+    },
+    callbackUrl: {
+      name: `${seguras ? "__Secure-" : ""}${PREFIJO_COOKIE}.callback-url`,
+      options: { ...baseCookie, httpOnly: false },
+    },
+    /* `__Host-` PROHÍBE el atributo `domain` —esa es su garantía: atar la
+       cookie a un host—. Con dominio compartido baja a `__Secure-`; dejarlo
+       en `__Host-` haría que el navegador la descarte en silencio y el login
+       daría vueltas sin error visible. */
+    csrfToken: {
+      name: `${seguras ? (DOMINIO_COOKIE ? "__Secure-" : "__Host-") : ""}${PREFIJO_COOKIE}.csrf-token`,
+      options: { ...baseCookie },
+    },
+    pkceCodeVerifier: {
+      name: `${seguras ? "__Secure-" : ""}${PREFIJO_COOKIE}.pkce.code_verifier`,
+      options: { ...baseCookie, maxAge: 900 },
+    },
+    state: {
+      name: `${seguras ? "__Secure-" : ""}${PREFIJO_COOKIE}.state`,
+      options: { ...baseCookie, maxAge: 900 },
+    },
   },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
