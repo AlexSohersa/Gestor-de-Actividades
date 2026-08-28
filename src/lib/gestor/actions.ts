@@ -313,8 +313,14 @@ export async function solicitarExtra(
   const tipo = String(form.get("kind") ?? "").trim() || null;
   const disciplina = String(form.get("discipline") ?? "").trim() || null;
   const esfuerzo = String(form.get("effort") ?? "").trim() || null;
-  const justificacion = String(form.get("detail") ?? "").trim();
-  const enviadaA = String(form.get("sentTo") ?? "").trim();
+  /*
+   * Los nombres son los que manda la pantalla copiada del portal: `reason`
+   * para la justificación y `approver` para el destinatario. Leerlos con otro
+   * nombre devolvía vacío y el formulario se quejaba de campos que la persona
+   * sí había llenado.
+   */
+  const justificacion = String(form.get("reason") ?? "").trim();
+  const enviadaA = String(form.get("approver") ?? "").trim();
 
   if (!fecha) return { ok: false, error: "Falta el día." };
   if (!esDiaValido(fecha)) return { ok: false, error: "Esa fecha no es válida." };
