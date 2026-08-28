@@ -104,6 +104,7 @@ async function main() {
       usados: number;
       vence: string | null;
       libera: string | null;
+      periodo: number;
     }[];
   }[] = [];
 
@@ -142,11 +143,26 @@ async function main() {
       continue;
     }
 
+    /*
+     * En qué periodo de vacaciones va esa persona, contado desde su ingreso.
+     *
+     * La hoja de antigüedad los numera 1, 2, 3… desde la fecha de arranque, y
+     * ese número es el que aparece en `PERMISOS TOMADOS`. Numerarlos siempre
+     * desde 1 hacía que a quien lleva tres años se le apuntaran sus vacaciones
+     * como "periodo 1" cuando en su gestor salen como periodo 3.
+     *
+     * Lo marca el AÑO cumplido, no el medio año: la escala de antigüedad
+     * avanza de 0.5 en 0.5 para calcular cuántos días tocan, pero el periodo
+     * de vacaciones es anual. Adolfo, con 3 años y 8 meses, va por el 3.
+     */
+    const periodoActual = Math.max(1, Math.floor(num(f[2]) ?? 0));
+
     const bloques: {
       dias: number;
       usados: number;
       vence: string | null;
       libera: string | null;
+      periodo: number;
     }[] = [];
 
     /*
@@ -161,10 +177,23 @@ async function main() {
     const dias2 = num(f[17]) ?? 0;
 
     if (venc1 && dias1 > 0) {
-      bloques.push({ dias: dias1, usados: 0, vence: venc1, libera: null });
+      // El periodo en curso: el que está corriendo hoy.
+      bloques.push({
+        dias: dias1, usados: 0, vence: venc1, libera: null,
+        periodo: periodoActual,
+      });
     }
     if (venc2 && dias2 > 0) {
-      bloques.push({ dias: dias2, usados: 0, vence: venc2, libera: null });
+      /*
+       * El siguiente, con vencimiento posterior.
+       *
+       * Si no hubo un "próximo vencimiento" —le pasa a quien lleva poco y solo
+       * tiene un periodo corriendo—, este ES el actual, no el siguiente.
+       */
+      bloques.push({
+        dias: dias2, usados: 0, vence: venc2, libera: null,
+        periodo: periodoActual + bloques.length,
+      });
     }
 
     /*
@@ -185,10 +214,12 @@ async function main() {
         usados: 0,
         vence: venc2 ?? venc1,
         libera: null,
+        periodo: periodoActual,
       });
     }
 
-    // Los FUTUROS: otorgados pero aún no disponibles.
+    // Los FUTUROS: otorgados pero aún no disponibles, uno por liberación.
+    let siguiente = periodoActual + bloques.length;
     for (const [fi, di] of [
       [f[19], f[20]],
       [f[21], f[22]],
@@ -202,7 +233,9 @@ async function main() {
           usados: 0,
           vence: null,
           libera: cuando,
+          periodo: siguiente,
         });
+        siguiente++;
       }
     }
 
@@ -271,7 +304,7 @@ async function main() {
         [
           `${p.personaId}-vac-${i}`,
           p.personaId,
-          i + 1,
+          b.periodo,
           b.dias,
           b.usados,
           b.libera,

@@ -89,6 +89,21 @@ const META_SEMANA = 40;
 /** "8" y no "8.0"; "7.5" cuando hay media hora. */
 const fmt = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(1));
 
+/**
+ * El lunes de la semana de una fecha, como AAAA-MM-DD.
+ *
+ * Agrupa el historial de horas extra: aquí el trabajo se mira por semanas, y
+ * una lista suelta de fechas no dice si algo fue de esta semana o del mes
+ * pasado.
+ */
+function lunesDeISO(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00.000Z`);
+  // getUTCDay: domingo es 0, así que se retrocede 6 en vez de -1.
+  const desde = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - desde);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Tono de cada tipo de esfuerzo en el historial. */
 /*
  * Tono de cada esfuerzo.
@@ -2786,6 +2801,9 @@ function FormExtra({
   const [tipoExtra, setTipoExtra] = useState("");
   const [aprobador, setAprobador] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** Si el historial de solicitudes decididas está desplegado. */
+  const [verDecididas, setVerDecididas] = useState(false);
+
   const [pendiente, startTransition] = useTransition();
 
   const entregables = useMemo(
@@ -3018,10 +3036,12 @@ function FormExtra({
                   })}
 
                   {/*
-                    Lo ya decidido, en una sola línea.
-                    Ocupa lo mínimo y deja constancia de que se resolvió: sin
-                    esto, una solicitud aprobada desaparecía sin más y no había
-                    dónde comprobar en qué quedó.
+                    Lo ya decidido, plegado.
+
+                    Un contador suelto no dice cuándo: "2 aprobadas" puede ser
+                    de ayer o del año pasado. Se despliega agrupado por semana,
+                    que es como se mira el trabajo aquí, y cerrado no ocupa más
+                    que la línea de resumen.
                   */}
                   {(() => {
                     const decididas = mios.filter(
@@ -3035,33 +3055,158 @@ function FormExtra({
                     const horas = aprobadas.reduce((n, e) => n + e.hours, 0);
                     const rechazadas = decididas.length - aprobadas.length;
 
+                    // Por semana, de la más reciente a la más antigua.
+                    const semanas = new Map<string, ExtraVista[]>();
+                    for (const e of decididas) {
+                      const k = lunesDeISO(e.date);
+                      const g = semanas.get(k);
+                      if (g) g.push(e);
+                      else semanas.set(k, [e]);
+                    }
+                    const orden = [...semanas.entries()].sort((a, b) =>
+                      b[0].localeCompare(a[0]),
+                    );
+
                     return (
-                      <span
+                      <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          fontSize: 10.5,
-                          color: "var(--cv-ink-4)",
                           borderTop: "1px solid var(--cv-line-soft)",
                           paddingTop: 7,
                           marginTop: 1,
                         }}
                       >
-                        {aprobadas.length > 0 && (
-                          <span style={{ color: "#178A49", fontWeight: 600 }}>
-                            {aprobadas.length} aprobada
-                            {aprobadas.length === 1 ? "" : "s"} · {fmt(horas)} h
-                          </span>
+                        <button
+                          type="button"
+                          onClick={() => setVerDecididas((v) => !v)}
+                          aria-expanded={verDecididas}
+                          className="cv-btn"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            width: "100%",
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            fontSize: 10.5,
+                            color: "var(--cv-ink-4)",
+                          }}
+                        >
+                          <ChevronRight
+                            size={12}
+                            aria-hidden="true"
+                            style={{
+                              flexShrink: 0,
+                              transition: "transform .15s ease",
+                              transform: verDecididas
+                                ? "rotate(90deg)"
+                                : "none",
+                            }}
+                          />
+                          {aprobadas.length > 0 && (
+                            <span style={{ color: "#178A49", fontWeight: 600 }}>
+                              {aprobadas.length} aprobada
+                              {aprobadas.length === 1 ? "" : "s"} · {fmt(horas)} h
+                            </span>
+                          )}
+                          {rechazadas > 0 && (
+                            <span style={{ color: "#B23A40", fontWeight: 600 }}>
+                              {rechazadas} rechazada
+                              {rechazadas === 1 ? "" : "s"}
+                            </span>
+                          )}
+                          <span style={{ flex: 1 }} />
+                          <span>{verDecididas ? "ocultar" : "ver"}</span>
+                        </button>
+
+                        {verDecididas && (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 9,
+                              marginTop: 9,
+                            }}
+                          >
+                            {orden.map(([lunes, items]) => (
+                              <div key={lunes}>
+                                <span
+                                  className="soh-mono"
+                                  style={{
+                                    display: "block",
+                                    fontSize: 9,
+                                    letterSpacing: ".1em",
+                                    textTransform: "uppercase",
+                                    color: "var(--cv-ink-4)",
+                                    marginBottom: 4,
+                                  }}
+                                >
+                                  Semana del {diaCorto(lunes)}
+                                </span>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 3,
+                                  }}
+                                >
+                                  {items.map((e) => {
+                                    const ap = e.status === "APROBADO";
+                                    return (
+                                      <span
+                                        key={e.id}
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 7,
+                                          fontSize: 11,
+                                        }}
+                                      >
+                                        <span
+                                          aria-hidden="true"
+                                          style={{
+                                            width: 5,
+                                            height: 5,
+                                            borderRadius: 999,
+                                            background: ap
+                                              ? "#178A49"
+                                              : "#B23A40",
+                                            flexShrink: 0,
+                                          }}
+                                        />
+                                        <span
+                                          style={{
+                                            color: "var(--cv-ink-3)",
+                                            flex: 1,
+                                            minWidth: 0,
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap",
+                                          }}
+                                        >
+                                          {diaCorto(e.date)} · {fmt(e.hours)} h ·{" "}
+                                          {e.project}
+                                        </span>
+                                        <span
+                                          style={{
+                                            fontSize: 9.5,
+                                            fontWeight: 600,
+                                            color: ap ? "#178A49" : "#B23A40",
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {ap ? "Aprobada" : "Rechazada"}
+                                        </span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
-                        {rechazadas > 0 && (
-                          <span style={{ color: "#B23A40", fontWeight: 600 }}>
-                            {rechazadas} rechazada{rechazadas === 1 ? "" : "s"}
-                          </span>
-                        )}
-                        <span style={{ flex: 1 }} />
-                        <span>ya en tu semana</span>
-                      </span>
+                      </div>
                     );
                   })()}
                 </div>
