@@ -20,7 +20,7 @@ export default async function AusenciasPage() {
   const [{ lista }, saldo, tipos, aprobadores, pendientes] =
     await Promise.all([
       loadAusencias(persona.id),
-      saldoVacaciones(persona.id, persona.horasDia),
+      saldoVacaciones(persona.id),
       catalogoAusencias(),
       listaAprobadores(),
       /*

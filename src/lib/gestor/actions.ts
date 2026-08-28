@@ -378,7 +378,7 @@ export async function solicitarAusencia(
     // El saldo se comprueba aquí y no en la pantalla: el cliente puede mandar
     // lo que quiera, y unas vacaciones sin días detrás descuadran la nómina.
     const { saldoVacaciones } = await import("@/lib/trabajo/queries");
-    const saldo = await saldoVacaciones(persona.id, jornada);
+    const saldo = await saldoVacaciones(persona.id);
     const pide = diasHabilesEntre(inicio, fin).length;
 
     if (pide > saldo.disponibles) {
@@ -456,8 +456,8 @@ async function consumirVacaciones(
   personaId: string,
   dias: number,
   ausenciaId: string,
-): Promise<number | null> {
-  if (dias <= 0) return null;
+): Promise<{ periodo: number | null; sinCubrir: number }> {
+  if (dias <= 0) return { periodo: null, sinCubrir: 0 };
 
   const hoy = new Date();
 
@@ -531,7 +531,15 @@ async function consumirVacaciones(
     restan -= toma;
   }
 
-  return periodo;
+  /*
+   * Si no alcanzó, quien llama tiene que enterarse.
+   *
+   * El saldo se comprueba al PEDIR, pero entre eso y la aprobación pueden
+   * haberse aprobado otras: dos solicitudes de 4 días con 4 disponibles pasan
+   * las dos la comprobación, y la segunda descontaría solo lo que quedara.
+   * Devolverlo en silencio dejaba unas vacaciones aprobadas sin días detrás.
+   */
+  return { periodo, sinCubrir: Math.round(restan * 100) / 100 };
 }
 
 export async function decidirAusencia(
@@ -624,7 +632,46 @@ export async function decidirAusencia(
       deFechaDia(ausencia.fechaFin),
     ).length;
 
-    const periodo = await consumirVacaciones(ausencia.personaId, dias, id);
+    /*
+     * Se comprueba el saldo aquí también, no solo al pedir.
+     *
+     * Entre la solicitud y la aprobación pueden haberse aprobado otras: dos
+     * de 4 días con 4 disponibles pasan las dos la comprobación inicial. Sin
+     * esto, la segunda quedaba aprobada descontando solo lo que quedara.
+     */
+    const { saldoVacaciones } = await import("@/lib/trabajo/queries");
+    const saldo = await saldoVacaciones(ausencia.personaId);
+
+    if (dias > saldo.disponibles) {
+      // La decisión se deshace: el estado ya se había marcado arriba para
+      // impedir que dos personas decidan a la vez.
+      await db.ausencia.update({
+        where: { id },
+        data: { estado: "PENDIENTE", decididaPor: null, decididaEn: null },
+      });
+      return {
+        ok: false,
+        error:
+          `No alcanza el saldo: son ${dias} día(s) y le quedan ` +
+          `${saldo.disponibles}. Puede que se le aprobaran otras vacaciones ` +
+          `mientras tanto.`,
+      };
+    }
+
+    const { periodo, sinCubrir } = await consumirVacaciones(
+      ausencia.personaId,
+      dias,
+      id,
+    );
+
+    // Red de seguridad: si aun así faltaron días, queda escrito. No debería
+    // pasar tras la comprobación de arriba, y si pasa hay que verlo.
+    if (sinCubrir > 0) {
+      console.error(
+        `[ausencia ${id}] se aprobaron ${dias} día(s) pero faltaron ${sinCubrir} de saldo`,
+      );
+    }
+
     if (periodo !== null) {
       await db.ausencia.update({ where: { id }, data: { periodo } });
     }

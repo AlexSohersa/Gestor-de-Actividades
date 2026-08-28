@@ -195,7 +195,6 @@ export const loadAusencias = cache(async function loadAusencias(
  */
 export const saldoVacaciones = cache(async function saldoVacaciones(
   personaId?: string | null,
-  jornada = 8,
 ): Promise<SaldoVacaciones> {
   const vacio: SaldoVacaciones = {
     disponibles: 0,
@@ -205,25 +204,15 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
   };
   if (!personaId) return vacio;
 
-  const [saldos, aprobadas] = await Promise.all([
-    db.saldoVacaciones.findMany({
-      where: { personaId },
-      orderBy: { periodo: "asc" },
-    }),
-    db.ausencia.findMany({
-      where: { personaId, estado: "APROBADA" },
-      select: {
-        tipo: true,
-        fechaInicio: true,
-        fechaFin: true,
-        medioDia: true,
-        horas: true,
-        // Para distinguir lo importado de la hoja —ya descontado— de lo
-        // aprobado aquí, que todavía no lo está.
-        sheetSync: true,
-      },
-    }),
-  ]);
+  /*
+   * Solo los bloques. Ya no hace falta leer las ausencias: aprobar unas
+   * vacaciones descuenta de `dias` y anota en `usados` en el momento, así que
+   * la base está al día sin recalcular nada.
+   */
+  const saldos = await db.saldoVacaciones.findMany({
+    where: { personaId },
+    orderBy: { periodo: "asc" },
+  });
 
   /*
    * Los días ya tomados, según la hoja oficial.
@@ -239,31 +228,17 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
   const tomadosEnBloques = saldos.reduce((n, b) => n + Number(b.usados), 0);
 
   /*
-   * Lo aprobado DESDE ESTA HERRAMIENTA y que la hoja todavía no refleja.
+   * Ya NO se descuenta nada aquí.
    *
-   * Es lo único que hay que descontar encima: la hoja se actualiza sola con
-   * lo que sube, así que en cuanto la sincronización pase, este número vuelve
-   * a cero y el saldo lo lleva `usados`.
+   * Aprobar unas vacaciones resta los días de `dias` y los anota en `usados`
+   * (ver `consumirVacaciones`), así que el saldo vivo ya está al día en cuanto
+   * se aprueba. Volver a restar las ausencias aprobadas lo contaba dos veces:
+   * quien pedía 4 días veía bajar 8.
    *
-   * La jornada de la persona manda: `diasHabiles` reparte por ocho horas
-   * porque así era en el portal, y aquí hay jornadas de 4 y 5.
+   * `usados` es el histórico completo —lo que traía la hoja más lo aprobado
+   * aquí— y sirve para enseñar "6 de 12", no para restar.
    */
-  const usados = aprobadas
-    .filter((a) => a.tipo.toUpperCase().includes("VACACION"))
-    .filter((a) => a.sheetSync !== "hoja")
-    .reduce((n, a) => {
-      const dias = diasHabiles({
-        startDate: a.fechaInicio,
-        endDate: a.fechaFin,
-        halfDay: a.medioDia,
-        hours: a.horas === null ? null : Number(a.horas),
-      });
-      // Para el medio día, `diasHabiles` divide entre 8; si la jornada no es
-      // de ocho horas hay que reescalarlo o se descontaría de más.
-      return n + (a.medioDia && jornada !== 8 ? (dias * 8) / jornada : dias);
-    }, 0);
-
-  const usadosMostrados = tomadosEnBloques + usados;
+  const usadosMostrados = tomadosEnBloques;
 
   // "Hoy" en México, no en UTC: a media tarde el servidor ya estaría en el día
   // siguiente y un bloque que se libera mañana contaría como disponible.
@@ -314,17 +289,13 @@ export const saldoVacaciones = cache(async function saldoVacaciones(
    * bloque que vence antes al que vence después: así se aprovechan primero los
    * que están por caducar, como hace el gestor de siempre.
    */
-  let porRepartir = usados;
-  const bloques = disponiblesBloques.map((b) => {
-    const gastado = Math.min(b.dias, porRepartir);
-    porRepartir = Math.round((porRepartir - gastado) * 100) / 100;
-    return {
-      dias: Math.round((b.dias - gastado) * 100) / 100,
-      usados: Math.round((b.gastado + gastado) * 100) / 100,
-      vence: b.vence ?? "",
-      periodo: String(b.periodo),
-    };
-  });
+  const bloques = disponiblesBloques.map((b) => ({
+    // `dias` viene ya descontado de la base; no hay nada que repartir encima.
+    dias: b.dias,
+    usados: b.gastado,
+    vence: b.vence ?? "",
+    periodo: String(b.periodo),
+  }));
 
   const disponibles = bloques.reduce((n, b) => n + b.dias, 0);
 
