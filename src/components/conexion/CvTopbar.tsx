@@ -23,14 +23,15 @@ export function CvTopbar({
 }) {
   return (
     <header
-      className="soh-hero"
       style={{
         position: "relative",
-        height: 64,
+        zIndex: 30,
+        height: 58,
         flexShrink: 0,
         display: "flex",
         alignItems: "center",
-        padding: "0 26px",
+        padding: "0 16px",
+        background: "var(--cv-deep)",
         overflow: "hidden",
       }}
     >
@@ -77,21 +78,27 @@ export function CvTopbar({
           gap: 14,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Avatar name={name} email={email} image={image} size={34} online={false} />
-
-          <div className="hidden sm:block" style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--soh-dk-2)" }}>
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "4px 12px 4px 5px",
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,.13)",
+            background: "rgba(255,255,255,.06)",
+          }}
+        >
+          <Avatar name={name} email={email} image={image} size={28} online={false} />
+          <span className="hidden lg:block" style={{ lineHeight: 1.2 }}>
+            <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#fff" }}>
               {name ?? "Sin nombre"}
-            </div>
-            <div
-              className="soh-mono"
-              style={{ fontSize: 9.5, color: "var(--soh-text-2)", whiteSpace: "nowrap" }}
-            >
+            </span>
+            <span style={{ display: "block", fontSize: 10, color: "var(--cv-dk-3)" }}>
               {email}
-            </div>
-          </div>
-        </div>
+            </span>
+          </span>
+        </span>
 
         <form
           onSubmit={(e) => {
@@ -105,19 +112,19 @@ export function CvTopbar({
             aria-label="Cerrar sesión"
             className="soh-icon-btn"
             style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,.1)",
-              background: "rgba(255,255,255,.04)",
-              color: "var(--soh-text-3)",
+              width: 36,
+              height: 36,
+              borderRadius: 11,
+              border: "1px solid rgba(255,255,255,.13)",
+              background: "rgba(255,255,255,.06)",
+              color: "var(--cv-dk-2)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
             }}
           >
-            <LogOut size={16} />
+            <LogOut size={15} />
           </button>
         </form>
       </div>
