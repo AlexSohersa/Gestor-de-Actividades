@@ -148,6 +148,22 @@ export const authConfig: NextAuthConfig = {
       return !!auth?.user;
     },
   },
-  session: { strategy: "jwt" },
+  /*
+   * Noventa días, y se renueva cada día que se usa.
+   *
+   * Tiene que ser el MISMO plazo en las cinco herramientas. Comparten la
+   * cookie de sesión, así que la que la considere vencida antes echa a la
+   * persona aunque las demás la sigan dando por buena: se cerraba la sesión
+   * "de la nada" en unas herramientas y en otras no.
+   *
+   * El acceso a Google se renueva aparte, en silencio, así que alargar esto
+   * no concede nada a nadie: solo evita pedir la cuenta a quien nunca dejó
+   * de trabajar aquí.
+   */
+  session: {
+    strategy: "jwt",
+    maxAge: 90 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
+  },
   trustHost: true,
 };
