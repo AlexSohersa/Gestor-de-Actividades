@@ -18,6 +18,7 @@ import {
 import type { AbsenceView } from "@/lib/trabajo/queries";
 import type { SaldoVacaciones } from "@/lib/gestor/queries";
 import { CvPortal } from "@/components/conexion/CvPortal";
+import { ausenciasDelMes } from "@/lib/trabajo/acciones-calendario";
 
 /**
  * Ausencias — saldo, calendario del mes y solicitudes reales.
@@ -48,6 +49,18 @@ const ST_UI: Record<
     soft: "#FCE9EA",
     ink: "#B23A40",
     label: "Rechazada",
+  },
+  /*
+   * Se pidió, nadie la decidió y su fecha ya pasó.
+   *
+   * En gris: no es una decisión, es una solicitud que se quedó sin respuesta.
+   * Se conserva como historial, pero deja de pedir acción a nadie.
+   */
+  CADUCADO: {
+    edge: "#C8D6E2",
+    soft: "var(--cv-faint)",
+    ink: "var(--cv-ink-4)",
+    label: "Sin responder",
   },
 };
 
@@ -141,7 +154,34 @@ export function AusenciasScreen({
   // `hoy` fijado al montar: el calendario no necesita reaccionar al cambio de
   // día en vivo, y así el useMemo de las celdas no se recalcula por gusto.
   const [hoy] = useState(() => new Date());
-  const [mes] = useState(() => new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  const [mes, setMes] = useState(
+    () => new Date(hoy.getFullYear(), hoy.getMonth(), 1),
+  );
+
+  /*
+   * Las ausencias del equipo del mes que se está viendo.
+   *
+   * El mes actual llega ya cargado desde el servidor; al navegar se piden las
+   * del nuevo. Traer un año entero de golpe serían cientos de filas que casi
+   * nadie llega a mirar.
+   */
+  const [equipoMes, setEquipoMes] = useState(equipo);
+  const [cargandoMes, setCargandoMes] = useState(false);
+
+  const irAlMes = (delta: number) => {
+    const nuevo = new Date(mes.getFullYear(), mes.getMonth() + delta, 1);
+    setMes(nuevo);
+    setDiaAbierto(null);
+
+    const clave = `${nuevo.getFullYear()}-${String(nuevo.getMonth() + 1).padStart(2, "0")}`;
+    setCargandoMes(true);
+    void ausenciasDelMes(clave)
+      .then(setEquipoMes)
+      // Si falla, el calendario se queda sin los puntos del equipo pero
+      // sigue mostrando lo propio, que es lo que la persona vino a ver.
+      .catch(() => setEquipoMes([]))
+      .finally(() => setCargandoMes(false));
+  };
 
   const nombreMes = new Intl.DateTimeFormat("es-MX", {
     month: "long",
@@ -199,7 +239,7 @@ export function AusenciasScreen({
       const iso = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}-${String(n).padStart(2, "0")}`;
 
       // Cuánta gente MÁS falta ese día. Lo propio ya se ve por el color.
-      const otros = equipo.filter(
+      const otros = equipoMes.filter(
         (e) => e.dia === iso && e.personaId !== yoId,
       ).length;
 
@@ -223,7 +263,7 @@ export function AusenciasScreen({
               : "",
       };
     });
-  }, [lista, mes, hoy, equipo, yoId]);
+  }, [lista, mes, hoy, equipoMes, yoId]);
 
   /**
    * "lunes, 18 de agosto" a partir de AAAA-MM-DD.
@@ -1108,15 +1148,63 @@ export function AusenciasScreen({
                 }}
               >
                 <span
-                  className="soh-display"
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: "var(--cv-ink)",
-                    textTransform: "capitalize",
-                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 2 }}
                 >
-                  {nombreMes}
+                  {/*
+                    Navegar entre meses.
+                    Discretos y pegados al nombre: el calendario es lo que
+                    importa, no los controles.
+                  */}
+                  {(
+                    [
+                      [-1, "Mes anterior", "‹"],
+                      [1, "Mes siguiente", "›"],
+                    ] as const
+                  ).map(([delta, etiqueta, signo]) => (
+                    <button
+                      key={delta}
+                      type="button"
+                      onClick={() => irAlMes(delta)}
+                      aria-label={etiqueta}
+                      title={etiqueta}
+                      style={{
+                        order: delta < 0 ? 0 : 2,
+                        width: 22,
+                        height: 22,
+                        borderRadius: 7,
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--cv-ink-4)",
+                        fontSize: 15,
+                        lineHeight: 1,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {signo}
+                    </button>
+                  ))}
+                  <span
+                    className="soh-display"
+                    style={{
+                      order: 1,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "var(--cv-ink)",
+                      textTransform: "capitalize",
+                      minWidth: 118,
+                      textAlign: "center",
+                      // Se atenúa mientras llegan los datos del mes nuevo, en
+                      // vez de dejar la rejilla en blanco.
+                      opacity: cargandoMes ? 0.5 : 1,
+                      transition: "opacity .12s ease",
+                    }}
+                  >
+                    {nombreMes}
+                  </span>
                 </span>
                 <span style={{ display: "flex", gap: 11, flexWrap: "wrap" }}>
                   {(
@@ -1189,8 +1277,13 @@ export function AusenciasScreen({
                       disabled={vacio}
                       onClick={() => setDiaAbierto(c.iso)}
                       aria-pressed={diaAbierto === c.iso}
-                      className="cv-btn"
                       style={{
+                        /*
+                         * Sin `cv-btn`: esa clase trae relleno, borde y sombra
+                         * de botón, y convertía cada día en un cuadro pesado.
+                         * El calendario tiene que seguir leyéndose como una
+                         * rejilla de números.
+                         */
                         height: 34,
                         borderRadius: 9,
                         display: "flex",
@@ -1201,17 +1294,22 @@ export function AusenciasScreen({
                         fontWeight: ui.w,
                         color: ui.c,
                         background: ui.bg,
-                        // Un anillo más marcado en el día abierto, para no
-                        // perder de vista cuál se está mirando.
+                        // El día abierto se marca con un anillo fino del mismo
+                        // grosor que los demás: destaca por el color, no por
+                        // engordar y descuadrar la rejilla.
                         boxShadow:
                           diaAbierto === c.iso && !vacio
-                            ? "inset 0 0 0 2px var(--cv-navy)"
+                            ? "inset 0 0 0 1.5px var(--cv-navy)"
                             : ui.ring,
                         position: "relative",
                         border: "none",
                         padding: 0,
+                        margin: 0,
                         cursor: vacio ? "default" : "pointer",
-                        font: "inherit",
+                        fontFamily: "inherit",
+                        transition: "box-shadow .12s ease, background .12s ease",
+                        WebkitAppearance: "none",
+                        appearance: "none",
                       }}
                     >
                       {c.n}
@@ -1240,24 +1338,19 @@ export function AusenciasScreen({
                         <span
                           aria-hidden="true"
                           style={{
+                            // Un punto, no una etiqueta con número: dice "aquí
+                            // falta alguien" sin robarle sitio al día. El
+                            // cuántos se ve al pulsar.
                             position: "absolute",
-                            top: 3,
-                            right: 4,
-                            minWidth: 12,
-                            height: 12,
-                            padding: "0 3px",
+                            top: 5,
+                            right: 5,
+                            width: 4,
+                            height: 4,
                             borderRadius: 999,
-                            background: "var(--cv-line)",
-                            color: "var(--cv-ink-3)",
-                            fontSize: 8,
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            background: "var(--cv-ink-4)",
+                            opacity: 0.45,
                           }}
-                        >
-                          {c.otros}
-                        </span>
+                        />
                       )}
                     </button>
                   );
@@ -1273,7 +1366,7 @@ export function AusenciasScreen({
               */}
               {diaAbierto &&
                 (() => {
-                  const delDia = equipo.filter((e) => e.dia === diaAbierto);
+                  const delDia = equipoMes.filter((e) => e.dia === diaAbierto);
                   const mios = delDia.filter((e) => e.personaId === yoId);
                   const otros = delDia.filter((e) => e.personaId !== yoId);
 

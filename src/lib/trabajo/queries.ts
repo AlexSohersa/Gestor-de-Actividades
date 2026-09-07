@@ -79,6 +79,8 @@ export function diasHabiles(a: {
 function aEstadoPantalla(estado: string): string {
   if (estado === "APROBADA") return "APROBADO";
   if (estado === "RECHAZADA") return "RECHAZADO";
+  // Nunca se decidió y su fecha ya pasó: no es trabajo pendiente de nadie.
+  if (estado === "CADUCADA") return "CADUCADO";
   return "pendiente";
 }
 

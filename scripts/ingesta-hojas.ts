@@ -667,7 +667,18 @@ async function ingestarAusencias(padron: Padron) {
       medioDia: !esDiaCompleto,
       horas: esDiaCompleto ? null : b.horas,
       motivo: b.motivo,
-      estado: b.aprobada ? "APROBADA" : "PENDIENTE",
+      /*
+       * Sin decidir y con la fecha ya pasada: CADUCADA, no pendiente.
+       *
+       * La hoja tiene solicitudes de 2024 que nadie resolvió. Traerlas como
+       * pendientes las pone a pedir aprobación años después, y no hay nada
+       * que decidir sobre unos días que ya transcurrieron.
+       */
+      estado: b.aprobada
+        ? "APROBADA"
+        : b.fin < new Date().toISOString().slice(0, 10)
+          ? "CADUCADA"
+          : "PENDIENTE",
       periodo: b.periodo === null ? null : Math.round(b.periodo),
       // YA ESTÁN EN LA HOJA: sin esto la sincronización las devolvería y la
       // duplicaría. Es el mismo motivo por el que las horas nacen con "hoja".

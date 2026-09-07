@@ -228,21 +228,15 @@ async function main() {
     );
   }
 
-  console.log("  saldos…");
-  await insertar(
-    "actividad.saldo_vacaciones",
-    [
-      "id", "persona_id", "periodo", "dias", "usados", "corte",
-      "liberado_en", "vence_en",
-    ],
-    saldos.map((s) => [
-      s.id, s.personaId, s.periodo, Number(s.dias), Number(s.usados),
-      s.corte?.toISOString().slice(0, 10) ?? null,
-      s.liberadoEn?.toISOString().slice(0, 10) ?? null,
-      s.venceEn?.toISOString().slice(0, 10) ?? null,
-    ]),
-    ["dias", "usados", "corte", "liberado_en", "vence_en"],
-  );
+  /*
+   * Los SALDOS no se copian.
+   *
+   * En producción salen de la hoja oficial de antigüedad, con los periodos
+   * reales de cada persona (`sincronizar-vacaciones.ts`). Local todavía tiene
+   * los del portal antiguo, y sobrescribirlos con ellos devolvería los
+   * periodos inventados 1, 2, 3 y saldos que no cuadran con el gestor.
+   */
+  console.log("  saldos… (no se tocan: los buenos son los de producción)");
 
   // La secuencia del folio, para que el siguiente ticket siga la numeración
   // de la hoja en vez de chocar con la que ya existe.
