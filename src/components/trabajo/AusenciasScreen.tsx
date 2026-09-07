@@ -89,6 +89,8 @@ export function AusenciasScreen({
   disponibles,
   saldo,
   liberaciones,
+  yoId = "",
+  equipo = [],
   tipos,
   aprobadores,
   porAprobar,
@@ -101,6 +103,21 @@ export function AusenciasScreen({
   saldo: SaldoVacaciones;
   /// Lo que aún no se libera, con su fecha.
   liberaciones: { dias: number; fecha: string }[];
+  /**
+   * Lo aprobado de TODO el equipo, un registro por día.
+   *
+   * Solo alimenta el calendario: sirve para ver con quién coincides antes de
+   * pedir tus días. En el resto de la pantalla cada quien ve solo lo suyo.
+   */
+  /// Mi id, para separar lo mío de lo del equipo en el calendario.
+  yoId?: string;
+  equipo?: {
+    dia: string;
+    personaId: string;
+    nombre: string;
+    tipo: string;
+    horas: number | null;
+  }[];
   /// Tipos del catálogo real, no una lista escrita a mano.
   tipos: string[];
   /// Quiénes pueden recibir la solicitud: el "Enviar a" del Gestor.
@@ -111,6 +128,9 @@ export function AusenciasScreen({
   const [solicitando, setSolicitando] = useState(false);
   const [pestana, setPestana] = useState<"mias" | "aprobar">("mias");
   // La solicitud abierta en el panel: se puede revisar lo que se mandó.
+  /** El día del calendario que se está mirando, o null. */
+  const [diaAbierto, setDiaAbierto] = useState<string | null>(null);
+
   const [detalle, setDetalle] = useState<AbsenceView | null>(null);
   const [, startTransition] = useTransition();
 
@@ -166,15 +186,27 @@ export function AusenciasScreen({
 
     return Array.from({ length: 35 }, (_, i) => {
       const n = i - primerDow + 1;
-      if (n < 1 || n > diasDelMes) return { n: "", tipo: "fuera" as const };
+      if (n < 1 || n > diasDelMes)
+        return { n: "", iso: "", tipo: "fuera" as const, tip: "", otros: 0 };
       const d = new Date(mes.getFullYear(), mes.getMonth(), n);
       const aus = enAusencia(d);
       const esHoy =
         n === hoy.getDate() &&
         mes.getMonth() === hoy.getMonth() &&
         mes.getFullYear() === hoy.getFullYear();
+
+      // El día como AAAA-MM-DD, para cruzarlo con lo del equipo.
+      const iso = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}-${String(n).padStart(2, "0")}`;
+
+      // Cuánta gente MÁS falta ese día. Lo propio ya se ve por el color.
+      const otros = equipo.filter(
+        (e) => e.dia === iso && e.personaId !== yoId,
+      ).length;
+
       return {
         n: String(n),
+        iso,
+        otros,
         tipo: aus
           ? aus.status === "APROBADO"
             ? ("aprobada" as const)
@@ -186,10 +218,26 @@ export function AusenciasScreen({
           ? `${aus.type} (${ST_UI[aus.status]?.label.toLowerCase()})`
           : esHoy
             ? "Hoy"
-            : "",
+            : otros > 0
+              ? `${otros} ${otros === 1 ? "persona ausente" : "personas ausentes"}`
+              : "",
       };
     });
-  }, [lista, mes, hoy]);
+  }, [lista, mes, hoy, equipo, yoId]);
+
+  /**
+   * "lunes, 18 de agosto" a partir de AAAA-MM-DD.
+   *
+   * Se lee a mediodía UTC para que no se corra de día: las fechas del
+   * calendario son días sueltos, no instantes.
+   */
+  const diaLargo = (iso: string) =>
+    new Intl.DateTimeFormat("es-MX", {
+      timeZone: "UTC",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(new Date(`${iso}T12:00:00.000Z`));
 
   const CELDA_UI = {
     fuera: { bg: "transparent", c: "var(--cv-faint)", ring: "none", w: 500 },
@@ -1132,10 +1180,16 @@ export function AusenciasScreen({
                   const ui = CELDA_UI[c.tipo];
                   const marcada =
                     c.tipo === "pendiente" || c.tipo === "aprobada";
+                  const vacio = c.tipo === "fuera";
                   return (
-                    <span
+                    <button
                       key={i}
+                      type="button"
                       title={c.tip || undefined}
+                      disabled={vacio}
+                      onClick={() => setDiaAbierto(c.iso)}
+                      aria-pressed={diaAbierto === c.iso}
+                      className="cv-btn"
                       style={{
                         height: 34,
                         borderRadius: 9,
@@ -1147,8 +1201,17 @@ export function AusenciasScreen({
                         fontWeight: ui.w,
                         color: ui.c,
                         background: ui.bg,
-                        boxShadow: ui.ring,
+                        // Un anillo más marcado en el día abierto, para no
+                        // perder de vista cuál se está mirando.
+                        boxShadow:
+                          diaAbierto === c.iso && !vacio
+                            ? "inset 0 0 0 2px var(--cv-navy)"
+                            : ui.ring,
                         position: "relative",
+                        border: "none",
+                        padding: 0,
+                        cursor: vacio ? "default" : "pointer",
+                        font: "inherit",
                       }}
                     >
                       {c.n}
@@ -1167,10 +1230,172 @@ export function AusenciasScreen({
                           }}
                         />
                       )}
-                    </span>
+                      {/*
+                        Cuánta gente MÁS falta ese día.
+                        Un punto pequeño arriba a la derecha: se ve de un
+                        vistazo sin competir con el número del día ni con la
+                        barra de lo propio, que es lo que importa primero.
+                      */}
+                      {!marcada && c.otros > 0 && (
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            position: "absolute",
+                            top: 3,
+                            right: 4,
+                            minWidth: 12,
+                            height: 12,
+                            padding: "0 3px",
+                            borderRadius: 999,
+                            background: "var(--cv-line)",
+                            color: "var(--cv-ink-3)",
+                            fontSize: 8,
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {c.otros}
+                        </span>
+                      )}
+                    </button>
                   );
                 })}
               </div>
+
+              {/*
+                Quién falta el día elegido.
+
+                Aparece bajo el calendario, no en una ventana aparte: así se
+                puede ir picando días y comparando sin perder de vista la
+                rejilla, que es justo lo que se hace al buscar hueco.
+              */}
+              {diaAbierto &&
+                (() => {
+                  const delDia = equipo.filter((e) => e.dia === diaAbierto);
+                  const mios = delDia.filter((e) => e.personaId === yoId);
+                  const otros = delDia.filter((e) => e.personaId !== yoId);
+
+                  return (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: "11px 12px",
+                        borderRadius: 12,
+                        border: "1px solid var(--cv-line-soft)",
+                        background: "var(--cv-faint)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: delDia.length ? 9 : 0,
+                        }}
+                      >
+                        <span
+                          className="soh-display"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "var(--cv-ink)",
+                          }}
+                        >
+                          {diaLargo(diaAbierto)}
+                        </span>
+                        <span style={{ flex: 1 }} />
+                        <button
+                          type="button"
+                          onClick={() => setDiaAbierto(null)}
+                          className="cv-btn"
+                          style={{
+                            border: "none",
+                            background: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            fontSize: 10.5,
+                            color: "var(--cv-ink-4)",
+                          }}
+                        >
+                          cerrar
+                        </button>
+                      </span>
+
+                      {delDia.length === 0 ? (
+                        <span
+                          style={{
+                            fontSize: 11.5,
+                            color: "var(--cv-ink-3)",
+                          }}
+                        >
+                          Nadie tiene ausencia aprobada ese día.
+                        </span>
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 5,
+                          }}
+                        >
+                          {/* Lo propio primero y en verde: es lo que se busca. */}
+                          {[...mios, ...otros].map((e, i) => {
+                            const esMio = e.personaId === yoId;
+                            return (
+                              <span
+                                key={`${e.personaId}-${i}`}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  fontSize: 11.5,
+                                }}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: 999,
+                                    background: esMio
+                                      ? "var(--cv-green)"
+                                      : "var(--cv-line)",
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                <span
+                                  style={{
+                                    fontWeight: esMio ? 700 : 500,
+                                    color: esMio
+                                      ? "#178A49"
+                                      : "var(--cv-ink-2)",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {esMio ? "Tú" : e.nombre}
+                                </span>
+                                <span
+                                  style={{
+                                    color: "var(--cv-ink-4)",
+                                    fontSize: 10.5,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {e.tipo}
+                                  {e.horas !== null && ` · ${fmt(e.horas)} h`}
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
             </div>
 
             {/* ─────────────────────────────────────── tus solicitudes ── */}

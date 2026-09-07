@@ -3,6 +3,8 @@ import { puedeAprobar } from "@/modules/identidad/domain/persona.entity";
 import { db } from "@/lib/db/client";
 import { catalogoAusencias, listaAprobadores } from "@/lib/gestor/queries";
 import { loadAusencias, saldoVacaciones } from "@/lib/trabajo/queries";
+import { ausenciasDelEquipo, ventanaDelMes } from "@/lib/trabajo/calendario";
+import { hoyEnMexico } from "@/lib/fechas";
 import { AusenciasScreen } from "@/components/trabajo/AusenciasScreen";
 
 export const revalidate = 0;
@@ -17,7 +19,15 @@ export default async function AusenciasPage() {
   const persona = await exigirSeccion("ausencias");
   const puedo = puedeAprobar(persona);
 
-  const [{ lista }, saldo, tipos, aprobadores, pendientes] =
+  /*
+   * El mes que se está mirando, para el calendario del equipo.
+   *
+   * Se trae solo esa ventana: son 442 ausencias y el calendario necesita las
+   * de treinta días.
+   */
+  const [desde, hasta] = ventanaDelMes(hoyEnMexico());
+
+  const [{ lista }, saldo, tipos, aprobadores, pendientes, equipo] =
     await Promise.all([
       loadAusencias(persona.id),
       saldoVacaciones(persona.id),
@@ -58,6 +68,8 @@ export default async function AusenciasPage() {
             orderBy: { creadoEn: "asc" },
           })
         : Promise.resolve([]),
+      // Lo aprobado de TODO el equipo, solo para el calendario.
+      ausenciasDelEquipo(desde, hasta),
     ]);
 
   return (
@@ -67,6 +79,8 @@ export default async function AusenciasPage() {
       disponibles={saldo.disponibles}
       saldo={saldo}
       liberaciones={saldo.liberaciones}
+      yoId={persona.id}
+      equipo={equipo}
       tipos={tipos}
       aprobadores={aprobadores}
       porAprobar={pendientes.map((a) => ({
