@@ -31,6 +31,9 @@ const APLICAR = process.argv.includes("--aplicar");
 const LIBRO = "11dqQd0-vgX7M51uocClzZR7-uMTgQllHWmqHvq5c_pw";
 const RANGO = "BASES DE DATOS!DH4:EF60";
 
+/** El libro de CÁLCULO DE ANTIGÜEDAD, donde vive `PERMISOS TOMADOS`. */
+const ANTIGUEDAD = "12MsH2hPwSe7DrubXhXCl1oKTg1rU4AuKgFwnM-ZoiJg";
+
 /** Un día de la hoja (D/M/AAAA) como AAAA-MM-DD. */
 function fecha(t: unknown): string | null {
   const m = String(t ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -52,6 +55,49 @@ const norm = (t: unknown) =>
     .toUpperCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "");
+
+/**
+ * Cuántos días de vacaciones tomó cada persona, POR PERIODO.
+ *
+ * Sale de `PERMISOS TOMADOS`, donde cada día lleva su "periodo liberación".
+ * Hace falta porque la columna de "días tomados" del resumen es el total
+ * HISTÓRICO: Adolfo tiene 38 de toda su vida en la empresa, pero solo 13 son
+ * de los periodos que siguen vigentes. Apilarlos todos en el bloque activo
+ * hacía que la pantalla dijera "13 de 51" en vez de "13 de 17".
+ *
+ * Devuelve un mapa `NOMBRE|periodo` → días.
+ */
+async function tomadosPorPeriodo() {
+  const { google } = await import("googleapis");
+  const [{ g }] = await sql<{ g: string }>(
+    `select google_refresco g from core.persona
+      where google_refresco is not null limit 1`,
+  );
+  const auth = new google.auth.OAuth2(
+    process.env.AUTH_GOOGLE_ID,
+    process.env.AUTH_GOOGLE_SECRET,
+  );
+  auth.setCredentials({ refresh_token: g });
+  const s = google.sheets({ version: "v4", auth });
+
+  const r = await s.spreadsheets.values.get({
+    spreadsheetId: ANTIGUEDAD,
+    range: "PERMISOS TOMADOS!A:I",
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+
+  const cuenta = new Map<string, number>();
+  for (const f of (r.data.values ?? []).slice(1)) {
+    const quien = norm(f[0]);
+    const tipo = String(f[1] ?? "").toUpperCase();
+    const periodo = num(f[8]);
+    // Solo vacaciones: los permisos y las incapacidades no gastan saldo.
+    if (!quien || !tipo.includes("VACACION") || periodo === null) continue;
+    const k = `${quien}|${periodo}`;
+    cuenta.set(k, (cuenta.get(k) ?? 0) + 1);
+  }
+  return cuenta;
+}
 
 async function leerHoja() {
   const { google } = await import("googleapis");
@@ -80,7 +126,10 @@ async function main() {
   console.log(`  Servidor: ${servidor}`);
   console.log(`  Modo: ${APLICAR ? "\x1b[31mAPLICAR\x1b[0m" : "simulacro"}\n`);
 
-  const filas = await leerHoja();
+  const [filas, tomados] = await Promise.all([
+    leerHoja(),
+    tomadosPorPeriodo(),
+  ]);
   console.log(`  ${filas.length} personas en la tabla oficial`);
 
   // El padrón, para emparejar por nombre corto.
@@ -290,13 +339,16 @@ async function main() {
      * para que la pantalla pueda decir "10 de 12" —lo disponible sobre lo
      * liberado— en vez de "10 de 10".
      */
-    let porApuntar = p.tomados;
-
     for (const [i, b] of p.bloques.entries()) {
-      if (!b.libera && porApuntar > 0) {
-        b.usados = porApuntar;
-        porApuntar = 0;
-      }
+      /*
+       * Lo tomado DE ESE periodo, no el total histórico.
+       *
+       * Antes se apilaba todo en el primer bloque vivo, así que a quien lleva
+       * años se le sumaban días de periodos ya vencidos: la pantalla decía
+       * "13 de 51" cuando lo vigente son 13 de 17. Cada bloque lleva ahora lo
+       * suyo, y el total sale de los periodos que siguen contando.
+       */
+      b.usados = tomados.get(`${norm(p.nombre)}|${b.periodo}`) ?? 0;
       await sql(
         `insert into actividad.saldo_vacaciones
            (id, persona_id, periodo, dias, usados, corte, liberado_en, vence_en)
