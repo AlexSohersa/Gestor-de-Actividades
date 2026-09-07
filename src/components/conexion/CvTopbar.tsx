@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { GestorLogo } from "@/components/brand/GestorLogo";
 import { Avatar } from "@/components/hub/Avatar";
+import { VolverAlCore } from "@/components/layout/VolverAlCore";
 
 /**
  * La barra superior: marca a la izquierda, quién eres a la derecha.
@@ -78,6 +79,8 @@ export function CvTopbar({
           gap: 14,
         }}
       >
+        <VolverAlCore />
+
         <span
           style={{
             display: "flex",
