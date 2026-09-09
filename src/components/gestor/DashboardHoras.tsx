@@ -84,6 +84,15 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
    * y se veían idénticas. Arrancando algo por debajo del mínimo, la diferencia
    * entre un mes flojo y uno cargado se nota.
    */
+  /** El mes de hoy en México, como AAAA-MM. */
+  const mesActual = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+  })
+    .format(new Date())
+    .slice(0, 7);
+
   const maxMes = Math.max(...d.porMes.map((m) => m.horas), 1);
   const minMes = Math.min(...d.porMes.map((m) => m.horas), maxMes);
   const pisoMes = d.porMes.length > 1 ? minMes * 0.9 : 0;
@@ -790,12 +799,20 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
                   height: 108,
                 }}
               >
-                {d.porMes.map((m, i) => {
+                {d.porMes.map((m) => {
                   const alto = Math.max(
                     8,
                     ((m.horas - pisoMes) / Math.max(1, maxMes - pisoMes)) * 100,
                   );
-                  const ultimo = i === d.porMes.length - 1;
+                  /*
+                   * El verde es para el MES EN CURSO, no para el último de la
+                   * lista.
+                   *
+                   * Como solo salen los meses con horas, en septiembre sin
+                   * nada reportado el último era agosto y se pintaba como si
+                   * fuera el mes actual.
+                   */
+                  const ultimo = m.mes === mesActual;
                   return (
                     <div
                       key={m.mes}
