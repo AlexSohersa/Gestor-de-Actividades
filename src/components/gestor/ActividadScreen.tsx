@@ -351,38 +351,9 @@ export function ActividadScreen({
   const [hastaHist, setHastaHist] = useState("");
   const conRangoHist = Boolean(desdeHist || hastaHist);
 
-  /*
-   * El historial se recorre por semanas, como el reporte.
-   *
-   * Ver un año de golpe no sirve para nada práctico: lo que se busca es "qué
-   * hice esa semana". `semanaHist` es el desplazamiento en semanas respecto a
-   * la actual, así que 0 es esta y −1 la pasada.
-   */
-  const [semanaHist, setSemanaHist] = useState(0);
-  const [todoElHistorial, setTodoElHistorial] = useState(false);
   // El registro abierto en el panel lateral del historial.
   const [detalle, setDetalle] = useState<FilaHistorial | null>(null);
 
-  const rangoHist = useMemo(() => {
-    const l = new Date();
-    l.setDate(l.getDate() - ((l.getDay() + 6) % 7) + semanaHist * 7);
-    l.setHours(0, 0, 0, 0);
-    const v = new Date(l);
-    v.setDate(v.getDate() + 6);
-    return { ini: iso(l), fin: iso(v), lunes: l, domingo: v };
-  }, [semanaHist]);
-
-  const etiquetaSemana = useMemo(() => {
-    const f = (d: Date) =>
-      new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short" })
-        .format(d)
-        .replace(".", "");
-    if (semanaHist === 0)
-      return `Esta semana · ${f(rangoHist.lunes)} – ${f(rangoHist.domingo)}`;
-    if (semanaHist === -1)
-      return `Semana pasada · ${f(rangoHist.lunes)} – ${f(rangoHist.domingo)}`;
-    return `${f(rangoHist.lunes)} – ${f(rangoHist.domingo)}`;
-  }, [semanaHist, rangoHist]);
 
   const historialFiltrado = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -390,35 +361,22 @@ export function ActividadScreen({
       // Al buscar, se busca en todo: acotar a la semana escondería justo lo
       // que se está tratando de encontrar.
       /*
-       * El rango a medida manda sobre la navegación por semanas: si alguien
-       * puso fechas, quiere ver eso y no la semana en la que esté parado.
+       * Sin rango se ve TODO.
+       *
+       * Antes arrancaba acotado a la semana en curso, así que el historial
+       * parecía vacío cuando esa semana no tenía nada. Lo que se busca aquí
+       * es "qué hice en tal proyecto" o "qué hice en estas fechas", y para eso
+       * están el buscador, el proyecto y el rango.
        */
-      if (conRangoHist) {
-        if (desdeHist && h.iso < desdeHist) return false;
-        if (hastaHist && h.iso > hastaHist) return false;
-      } else if (
-        !todoElHistorial &&
-        !q &&
-        (h.iso < rangoHist.ini || h.iso > rangoHist.fin)
-      ) {
-        return false;
-      }
+      if (desdeHist && h.iso < desdeHist) return false;
+      if (hastaHist && h.iso > hastaHist) return false;
       if (filtro !== "todos" && h.proyecto !== filtro) return false;
       if (!q) return true;
       return `${h.entregable} ${h.proyecto} ${h.comentario} ${h.tipo}`
         .toLowerCase()
         .includes(q);
     });
-  }, [
-    tablero.historial,
-    busqueda,
-    filtro,
-    rangoHist,
-    todoElHistorial,
-    conRangoHist,
-    desdeHist,
-    hastaHist,
-  ]);
+  }, [tablero.historial, busqueda, filtro, desdeHist, hastaHist]);
 
   const totalHistorial = historialFiltrado.reduce((n, h) => n + h.horas, 0);
 
@@ -1518,90 +1476,44 @@ export function ActividadScreen({
       {/* ═════════════════════════════════════════════ HISTORIAL ═════════ */}
       {vista === "historial" && (
         <div className="cv-rise">
-          {/* ----------------------------------- semana del historial -- */}
+          {/*
+            El resumen de lo que se está viendo.
+
+            Antes había tres formas de acotar el historial —navegar por
+            semanas, "Ver todo" y el rango de fechas—, y las tres se pisaban:
+            no quedaba claro cuál mandaba. Se queda el rango, que es el único
+            que sirve para buscar algo concreto, y aquí solo el recuento.
+          */}
           <div
             className="cv-card"
             style={{
               borderRadius: 15,
-              padding: "11px 15px",
+              padding: "10px 15px",
               display: "flex",
               alignItems: "center",
-              gap: 12,
+              gap: 10,
               flexWrap: "wrap",
               marginBottom: 12,
             }}
           >
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setTodoElHistorial(false);
-                  setSemanaHist((n) => n - 1);
-                }}
-                title="Semana anterior"
-                className="cv-btn"
-                style={navHist}
-              >
-                <ChevronLeft size={12} strokeWidth={2.4} />
-              </button>
-              <span
-                style={{
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  color: "var(--cv-ink)",
-                }}
-              >
-                {todoElHistorial ? "Todo el historial" : etiquetaSemana}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setTodoElHistorial(false);
-                  setSemanaHist((n) => Math.min(0, n + 1));
-                }}
-                disabled={semanaHist >= 0 || todoElHistorial}
-                title="Semana siguiente"
-                className="cv-btn"
-                style={{
-                  ...navHist,
-                  color: semanaHist >= 0 ? "#C8D6E2" : "var(--cv-ink-2)",
-                  cursor: semanaHist >= 0 ? "not-allowed" : "pointer",
-                }}
-              >
-                <ChevronRight size={12} strokeWidth={2.4} />
-              </button>
-            </span>
-
             <span
+              className="soh-display"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginLeft: "auto",
-                flexWrap: "wrap",
+                fontSize: 12.5,
+                fontWeight: 700,
+                color: "var(--cv-ink)",
               }}
             >
-              <span style={{ fontSize: 11, color: "var(--cv-ink-3)" }}>
-                {fmt(totalHistorial)} h en {historialFiltrado.length}{" "}
-                {historialFiltrado.length === 1 ? "registro" : "registros"}
-              </span>
-              <button
-                type="button"
-                onClick={() => setTodoElHistorial((v) => !v)}
-                aria-pressed={todoElHistorial}
-                className="cv-btn"
-                style={{
-                  border: `1px solid ${todoElHistorial ? "var(--cv-navy)" : "var(--cv-line)"}`,
-                  background: todoElHistorial ? "var(--cv-navy)" : "#fff",
-                  color: todoElHistorial ? "#fff" : "var(--cv-ink-3)",
-                  fontSize: 10.5,
-                  fontWeight: 600,
-                  padding: "6px 11px",
-                  borderRadius: 9,
-                }}
-              >
-                Ver todo
-              </button>
+              {conRangoHist
+                ? "Lo que pediste"
+                : busqueda.trim()
+                  ? "Resultados"
+                  : "Todo tu historial"}
+            </span>
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 11, color: "var(--cv-ink-3)" }}>
+              {fmt(totalHistorial)} h en {historialFiltrado.length}{" "}
+              {historialFiltrado.length === 1 ? "registro" : "registros"}
             </span>
           </div>
 
@@ -1648,34 +1560,21 @@ export function ActividadScreen({
               />
             </label>
             {/*
-              El proyecto, en una lista.
-              Son decenas: en chips no cabrían y la barra de filtros ocuparía
-              más que el propio historial.
+              El proyecto, escribiendo o eligiendo.
+
+              Con decenas en la lista, un `<select>` obliga a recorrerlos todos
+              buscando el que se quiere. Es el mismo campo del reporte de
+              horas: se teclea parte del nombre y la lista se reduce.
             */}
-            <select
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-              aria-label="Filtrar por proyecto"
-              style={{
-                border: `1px solid ${filtro !== "todos" ? "var(--cv-navy)" : "var(--cv-line)"}`,
-                background: "#fff",
-                color: "var(--cv-ink-2)",
-                fontFamily: "inherit",
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "7px 10px",
-                borderRadius: 10,
-                maxWidth: 230,
-                cursor: "pointer",
-                outline: "none",
-              }}
-            >
-              {filtrosProyecto.map((f) => (
-                <option key={f} value={f}>
-                  {f === "todos" ? "Todos los proyectos" : f}
-                </option>
-              ))}
-            </select>
+            <span style={{ width: 230 }}>
+              <CvCombo
+                opciones={filtrosProyecto.filter((f) => f !== "todos")}
+                valor={filtro === "todos" ? "" : filtro}
+                onChange={(v) => setFiltro(v || "todos")}
+                placeholder="Todos los proyectos"
+                ariaLabel="Filtrar por proyecto"
+              />
+            </span>
 
             {/* Y el rango de fechas, para cuando la semana no basta. */}
             <span
@@ -3568,17 +3467,6 @@ const campo: React.CSSProperties = {
 };
 
 /** Los botones de semana del historial, idénticos a los del reporte. */
-const navHist: React.CSSProperties = {
-  width: 27,
-  height: 27,
-  borderRadius: 8,
-  border: "1px solid var(--cv-line)",
-  background: "#fff",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "var(--cv-ink-2)",
-};
 
 /** Rótulo diminuto sobre cada campo de la tarjeta de registro. */
 const rotuloMini: React.CSSProperties = {

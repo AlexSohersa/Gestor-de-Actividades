@@ -792,14 +792,25 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
+                        justifyContent: "flex-end",
                         gap: 4,
                         minWidth: 0,
+                        /*
+                         * La columna necesita ALTURA propia.
+                         *
+                         * Sin ella, el `height: %` de la barra no tiene contra
+                         * qué medirse y se queda en cero: la gráfica salía
+                         * vacía aunque hubiera horas de sobra.
+                         */
+                        height: "100%",
                       }}
                     >
                       <span
                         style={{
                           width: "100%",
-                          height: `${alto}%`,
+                          // Se reserva sitio para el rótulo del mes: si la
+                          // barra ocupa el 100%, el nombre se sale de la caja.
+                          height: `${alto * 0.82}%`,
                           borderRadius: "5px 5px 2px 2px",
                           background: ultimo
                             ? "linear-gradient(180deg, var(--cv-green), var(--cv-teal))"
