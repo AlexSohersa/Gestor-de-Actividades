@@ -135,7 +135,7 @@ async function escribirChecada(fila: (string | number)[]) {
     // `encontrada` es índice base 0; las filas de la hoja empiezan en 1.
     await s.spreadsheets.values.update({
       spreadsheetId: LIBRO_CHECK_HO,
-      range: `${HOJA_CHECK_HO}!A${encontrada + 1}:E${encontrada + 1}`,
+      range: `${HOJA_CHECK_HO}!A${encontrada + 1}:F${encontrada + 1}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [fila] },
     });
@@ -640,6 +640,7 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         fecha: true,
         entrada: true,
         salida: true,
+        modalidad: true,
         persona: { select: { nombre: true, nombreUsuario: true, numero: true } },
       },
     });
@@ -654,6 +655,13 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
           fechaMX(c.fecha),
           horaMX(c.entrada),
           horaMX(c.salida),
+          // Columna F: dónde se trabajó. Sin ella, en la hoja no se distingue
+          // una jornada en casa de una en la oficina.
+          c.modalidad === "HOME_OFFICE"
+            ? "HOME OFFICE"
+            : c.modalidad === "OFICINA"
+              ? "OFICINA"
+              : "",
         ]);
       }
 

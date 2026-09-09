@@ -225,6 +225,14 @@ model Checada {
   fecha         DateTime  @db.Date
   entrada       DateTime? @db.Timestamptz(6)
   salida        DateTime? @db.Timestamptz(6)
+  /// Dónde se trabajó el día: "OFICINA" o "HOME_OFFICE".
+  ///
+  /// Se elige al marcar la entrada y vale para todo el día: las marcas de
+  /// comida y la salida ya no vuelven a preguntarlo.
+  modalidad     String?
+  /// La hora de salir a comer y la de volver.
+  comidaInicio  DateTime? @map("comida_inicio") @db.Timestamptz(6)
+  comidaFin     DateTime? @map("comida_fin") @db.Timestamptz(6)
   /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
   /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
   sheetSync     String    @default("pendiente") @map("sheet_sync")

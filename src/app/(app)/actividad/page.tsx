@@ -34,10 +34,32 @@ const ESTADO_EXTRA: Record<string, string> = {
 export default async function ActividadPage({
   searchParams,
 }: {
-  searchParams: Promise<{ semana?: string; vista?: string; periodo?: string }>;
+  searchParams: Promise<{
+    semana?: string;
+    vista?: string;
+    periodo?: string;
+    /** Rango a medida del tablero, cuando los periodos fijos no bastan. */
+    desde?: string;
+    hasta?: string;
+    /** Filtros del tablero: se ponen picando en las gráficas. */
+    proyecto?: string;
+    tipo?: string;
+  }>;
 }) {
   const persona = await exigirSeccion("actividad");
-  const { semana, vista, periodo: periodoParam } = await searchParams;
+  const {
+    semana,
+    vista,
+    periodo: periodoParam,
+    desde,
+    hasta,
+    proyecto,
+    tipo,
+  } = await searchParams;
+
+  /** Un día del filtro, solo si viene bien formado: llega de la URL. */
+  const dia = (v?: string) =>
+    v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
 
   /*
    * El tablero solo se calcula si se va a ver.
@@ -98,7 +120,12 @@ export default async function ActividadPage({
     catalogosActividad(),
     listaAprobadores(),
     necesitaTablero
-      ? cargarDashboard(persona.id, verEmpresa, periodo)
+      ? cargarDashboard(persona.id, verEmpresa, periodo, {
+          desde: dia(desde),
+          hasta: dia(hasta),
+          proyecto: proyecto || null,
+          tipo: tipo || null,
+        })
       : cargarResumenSemana(persona.id, periodo, verEmpresa),
     db.horaExtra.findMany({
       where: { personaId: persona.id },

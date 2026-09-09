@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Layers, TrendingUp, Users } from "lucide-react";
+import { Layers, TrendingUp } from "lucide-react";
 import type { Dashboard } from "@/lib/gestor/dashboard";
 
 /**
@@ -20,13 +20,13 @@ import type { Dashboard } from "@/lib/gestor/dashboard";
 const ETIQUETA_CORTA: Record<string, string> = {
   quincena: "esta quincena",
   mes: "este mes",
-  anio: "el último año",
+  anio: "este año",
 };
 
 const ETIQUETA_PERIODO: Record<string, string> = {
   quincena: "tus horas esta quincena",
   mes: "tus horas este mes",
-  anio: "tus horas del último año",
+  anio: "tus horas de este año",
 };
 
 export function DashboardHoras({ d }: { d: Dashboard }) {
@@ -34,13 +34,36 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
   const params = useSearchParams();
   const [orden, setOrden] = useState<"horas" | "avance">("horas");
 
-  const irAPeriodo = (v: string) => {
+  /*
+   * Los filtros viven en la URL.
+   *
+   * Así el tablero se puede compartir o recargar sin perder lo que se estaba
+   * mirando, y el servidor recalcula con los datos ya filtrados en vez de
+   * mandarlo todo al navegador.
+   */
+  const cambiar = (cambios: Record<string, string | null>) => {
     const q = new URLSearchParams(params.toString());
-    // El año es el valor por omisión, así que no necesita parámetro.
-    if (v === "anio") q.delete("periodo");
-    else q.set("periodo", v);
+    for (const [k, v] of Object.entries(cambios)) {
+      if (v === null || v === "") q.delete(k);
+      else q.set(k, v);
+    }
     router.push(`/actividad?${q}`);
   };
+
+  const irAPeriodo = (v: string) =>
+    // Elegir un periodo fijo descarta el rango a medida: son dos formas de
+    // decir lo mismo y tenerlas a la vez confunde.
+    cambiar({
+      periodo: v === "anio" ? null : v,
+      desde: null,
+      hasta: null,
+    });
+
+  const desde = params.get("desde") ?? "";
+  const hasta = params.get("hasta") ?? "";
+  const conRango = Boolean(desde || hasta);
+  const proyectoFiltro = params.get("proyecto") ?? "";
+  const tipoFiltro = params.get("tipo") ?? "";
 
   const proyectos = useMemo(() => {
     const lista = [...d.porProyecto];
@@ -84,10 +107,10 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
           [
             ["quincena", "Esta quincena"],
             ["mes", "Este mes"],
-            ["anio", "Último año"],
+            ["anio", "Este año"],
           ] as const
         ).map(([v, txt]) => {
-          const on = d.periodo === v;
+          const on = d.periodo === v && !conRango;
           return (
             <button
               key={v}
@@ -109,7 +132,117 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
             </button>
           );
         })}
+
+        {/*
+          Un rango a medida, para lo que los tres botones no cubren.
+          Van juntos y en pequeño: son la excepción, no lo que se usa a diario.
+        */}
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            marginLeft: 4,
+            padding: "3px 8px",
+            borderRadius: 9,
+            border: `1px solid ${conRango ? "var(--cv-navy)" : "var(--cv-line)"}`,
+            background: conRango ? "var(--cv-faint)" : "#fff",
+          }}
+        >
+          <input
+            type="date"
+            value={desde}
+            max={hasta || undefined}
+            onChange={(e) => cambiar({ desde: e.target.value })}
+            aria-label="Desde"
+            style={campoFecha}
+          />
+          <span style={{ fontSize: 10, color: "var(--cv-ink-4)" }}>a</span>
+          <input
+            type="date"
+            value={hasta}
+            min={desde || undefined}
+            onChange={(e) => cambiar({ hasta: e.target.value })}
+            aria-label="Hasta"
+            style={campoFecha}
+          />
+          {conRango && (
+            <button
+              type="button"
+              onClick={() => cambiar({ desde: null, hasta: null })}
+              aria-label="Quitar el rango"
+              title="Quitar el rango"
+              style={{
+                border: "none",
+                background: "none",
+                padding: 0,
+                marginLeft: 1,
+                cursor: "pointer",
+                color: "var(--cv-ink-4)",
+                fontSize: 13,
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          )}
+        </span>
       </div>
+
+      {/*
+        Lo que se está filtrando, con su aspa para quitarlo.
+
+        Solo aparece cuando hay algo activo: si no, sería una barra vacía
+        ocupando sitio. Los filtros se ponen picando en las gráficas.
+      */}
+      {(proyectoFiltro || tipoFiltro) && (
+        <div
+          className="cv-rise"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ fontSize: 10.5, color: "var(--cv-ink-4)" }}>
+            Filtrando por
+          </span>
+          {(
+            [
+              ["proyecto", proyectoFiltro],
+              ["tipo", tipoFiltro],
+            ] as const
+          )
+            .filter(([, v]) => v)
+            .map(([clave, v]) => (
+              <button
+                key={clave}
+                type="button"
+                onClick={() => cambiar({ [clave]: null })}
+                title={`Quitar el filtro de ${clave}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  border: "1px solid var(--cv-navy)",
+                  background: "var(--cv-navy)",
+                  color: "#fff",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "4px 9px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {v}
+                <span style={{ opacity: 0.7, fontSize: 12 }}>×</span>
+              </button>
+            ))}
+        </div>
+      )}
 
       {/* Un periodo con casi nada no está roto: solo hay poco reportado. */}
       {d.porProyecto.length === 0 && (
@@ -154,23 +287,35 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
           fondo="linear-gradient(150deg, var(--cv-navy), var(--cv-deep))"
           claro
         />
-        <Kpi
-          valor={fmt(d.misHorasMes)}
-          unidad="h"
-          label="este mes"
-          color="#22726F"
-        />
+        {/*
+          Fuera "este mes" y "promedio por día reportado".
+
+          El primero repetía lo que ya dice la tarjeta oscura cuando el filtro
+          está en mes; el segundo no se entendía —¿promedio sobre los días
+          trabajados o sobre los del periodo?— y nadie lo usaba para decidir
+          nada.
+        */}
         <Kpi
           valor={String(d.misProyectos)}
           label={d.misProyectos === 1 ? "proyecto tuyo" : "proyectos tuyos"}
           color="#5D50C9"
         />
-        <Kpi
-          valor={fmt(d.miPromedioDia)}
-          unidad="h"
-          label="promedio por día reportado"
-          color="#B07C10"
-        />
+
+        {/*
+          La empresa sube aquí, junto a las tuyas.
+
+          Estaba abajo del todo, en una tarjeta aparte que había que ir a
+          buscar. Al quedar sitio libre, se pone al mismo nivel: es una cifra
+          de contexto y se lee mejor al lado de las propias.
+        */}
+        {d.verEmpresa && (
+          <Kpi
+            valor={fmt(d.totalEmpresa)}
+            unidad="h"
+            label={`la empresa · ${d.proyectosActivos} proyectos · ${d.personasActivas} personas`}
+            color="#39B8B4"
+          />
+        )}
       </div>
 
       <div className="cv-dash-grid">
@@ -283,14 +428,36 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
                         ? { barra: "#F5B843", ink: "#B07C10" }
                         : { barra: "var(--cv-green)", ink: "#178A49" };
 
+                const activo = proyectoFiltro === p.proyecto;
+
                 return (
                   <div
                     key={p.proyecto}
                     className="cv-row-h"
+                    role="button"
+                    tabIndex={0}
+                    // Picar un proyecto filtra por él; volver a picarlo lo
+                    // quita. Es lo que se quiere hacer al ver una barra que
+                    // llama la atención.
+                    onClick={() =>
+                      cambiar({ proyecto: activo ? null : p.proyecto })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        cambiar({ proyecto: activo ? null : p.proyecto });
+                      }
+                    }}
+                    title={activo ? "Quitar el filtro" : `Ver solo ${p.proyecto}`}
                     style={{
                       padding: "10px 18px",
                       borderTop:
                         i > 0 ? "1px solid var(--cv-row-line)" : "none",
+                      cursor: "pointer",
+                      background: activo ? "var(--cv-faint)" : undefined,
+                      boxShadow: activo
+                        ? "inset 2px 0 0 var(--cv-navy)"
+                        : undefined,
                     }}
                   >
                     <div
@@ -473,8 +640,28 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
                 {d.porTipo.map((t, i) => {
                   const pct = (t.horas / totalTipos) * 100;
                   const c = TONOS[i % TONOS.length];
+                  const activoT = tipoFiltro === t.tipo;
                   return (
-                    <div key={t.tipo}>
+                    <div
+                      key={t.tipo}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => cambiar({ tipo: activoT ? null : t.tipo })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          cambiar({ tipo: activoT ? null : t.tipo });
+                        }
+                      }}
+                      title={activoT ? "Quitar el filtro" : `Ver solo ${t.tipo}`}
+                      style={{
+                        cursor: "pointer",
+                        borderRadius: 8,
+                        padding: activoT ? "4px 6px" : undefined,
+                        margin: activoT ? "-4px -6px" : undefined,
+                        background: activoT ? "var(--cv-faint)" : undefined,
+                      }}
+                    >
                       <div
                         style={{
                           display: "flex",
@@ -633,52 +820,23 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
             )}
           </div>
 
-          {/* La empresa, solo para quien puede verla */}
-          {d.verEmpresa && (
-            <div
-              className="cv-chrome-dots cv-rise"
-              style={{
-                position: "relative",
-                borderRadius: 18,
-                background:
-                  "linear-gradient(150deg, var(--cv-navy), var(--cv-deep))",
-                padding: "16px 18px",
-                overflow: "hidden",
-                animationDelay: ".15s",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 9,
-                  marginBottom: 12,
-                }}
-              >
-                <Users size={14} style={{ color: "var(--cv-green)" }} />
-                <span
-                  className="soh-display"
-                  style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}
-                >
-                  La empresa este año
-                </span>
-              </div>
-              <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-                <Mini
-                  valor={fmt(d.totalEmpresa)}
-                  unidad="h"
-                  label="reportadas"
-                />
-                <Mini valor={String(d.proyectosActivos)} label="proyectos" />
-                <Mini valor={String(d.personasActivas)} label="personas" />
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
 }
+
+/** Los dos campos del rango: discretos, sin marco propio. */
+const campoFecha: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  fontFamily: "inherit",
+  fontSize: 10.5,
+  color: "var(--cv-ink-2)",
+  padding: "3px 0",
+  outline: "none",
+  width: 104,
+};
 
 const TONOS = [
   "#32D66B",
@@ -756,47 +914,3 @@ function Kpi({
   );
 }
 
-function Mini({
-  valor,
-  unidad,
-  label,
-}: {
-  valor: string;
-  unidad?: string;
-  label: string;
-}) {
-  return (
-    <span>
-      <span style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-        <span
-          className="soh-display"
-          style={{
-            fontSize: 19,
-            fontWeight: 700,
-            color: "#fff",
-            lineHeight: 1,
-          }}
-        >
-          {valor}
-        </span>
-        {unidad && (
-          <span
-            style={{ fontSize: 11, color: "var(--cv-dk-3)", fontWeight: 700 }}
-          >
-            {unidad}
-          </span>
-        )}
-      </span>
-      <span
-        style={{
-          display: "block",
-          fontSize: 10,
-          color: "var(--cv-dk-3)",
-          marginTop: 2,
-        }}
-      >
-        {label}
-      </span>
-    </span>
-  );
-}

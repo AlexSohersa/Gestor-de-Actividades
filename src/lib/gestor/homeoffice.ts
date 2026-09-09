@@ -1,12 +1,17 @@
 "use server";
 
 /**
- * La checada de home office: una entrada y una salida por persona y día.
+ * El checador: entrada, comida y salida, en oficina o en casa.
  *
- * Conserva la firma que tenía en la plataforma porque el botón se copió sin
- * tocar. Por dentro escribe en `actividad.checada`, que ya tiene la restricción
- * de unicidad por (persona, día): no hay forma de acabar con dos filas del
- * mismo día por mucho que se pulse dos veces seguidas.
+ * Una fila por persona y día, con la restricción de unicidad que ya tenía
+ * `actividad.checada`: no hay forma de acabar con dos filas del mismo día por
+ * mucho que se pulse dos veces seguidas.
+ *
+ * La modalidad se elige al abrir el día y vale para todas las marcas: quien
+ * empieza en casa no tiene que repetirlo al salir a comer.
+ *
+ * A la hoja `CHECK HO` siguen yendo solo la entrada y la salida, más la
+ * modalidad en su columna: la comida vive en la base, donde hay sitio.
  */
 
 import { randomUUID } from "node:crypto";
@@ -47,22 +52,49 @@ function horaDecimalMexico(d: Date): number {
   return v("hour") + v("minute") / 60;
 }
 
+/** Los cuatro momentos que se pueden marcar en un día. */
+export type Marca = "entrada" | "comidaInicio" | "comidaFin" | "salida";
+
+/** Dónde se trabajó: se elige al abrir el día y vale para todas las marcas. */
+export type Modalidad = "OFICINA" | "HOME_OFFICE";
+
 export type EstadoHO = {
-  /** Hora de entrada de hoy, si ya se marcó. */
+  /** Hora de cada marca de hoy, si ya se hizo. */
   entrada: string | null;
-  /** Hora de salida de hoy, si ya se marcó. */
+  comidaInicio: string | null;
+  comidaFin: string | null;
   salida: string | null;
-  /** Qué haría el botón ahora mismo. */
-  siguiente: "entrada" | "salida" | "cerrado";
+  /** Dónde, elegido al marcar la entrada. */
+  modalidad: Modalidad | null;
+  /** Qué toca ahora; `cerrado` cuando el día ya terminó. */
+  siguiente: Marca | "cerrado";
 };
 
 export type ResultadoHO = {
   ok: boolean;
-  /** Qué se acaba de marcar. */
-  tipo?: "entrada" | "salida";
+  tipo?: Marca;
   hora?: string;
   error?: string;
 };
+
+/**
+ * Qué marca toca según lo que ya se hizo.
+ *
+ * El orden es el del día: se entra, se sale a comer, se vuelve y se cierra.
+ * La comida se puede saltar —quien no sale a comer pulsa directamente la
+ * salida—, así que no bloquea el cierre.
+ */
+function siguienteMarca(f: {
+  entrada: Date | null;
+  comidaInicio: Date | null;
+  comidaFin: Date | null;
+  salida: Date | null;
+}): Marca | "cerrado" {
+  if (f.salida) return "cerrado";
+  if (!f.entrada) return "entrada";
+  if (f.comidaInicio && !f.comidaFin) return "comidaFin";
+  return "salida";
+}
 
 export async function estadoHomeOffice(): Promise<EstadoHO> {
   const persona = await exigirPersona();
@@ -76,30 +108,49 @@ export async function estadoHomeOffice(): Promise<EstadoHO> {
     where: {
       personaId_fecha: { personaId: persona.id, fecha: aFechaDia(hoy) },
     },
-    select: { entrada: true, salida: true },
+    select: {
+      entrada: true,
+      salida: true,
+      comidaInicio: true,
+      comidaFin: true,
+      modalidad: true,
+    },
   });
 
   if (!fila) {
-    // Sin nada marcado, lo que toca depende de la hora: pasado el corte el
-    // botón ya ofrece "Marcar salida" en vez de "Marcar entrada".
+    // Sin nada marcado, lo que toca depende de la hora: pasado el corte se
+    // ofrece cerrar en vez de abrir.
     const esTarde = horaDecimalMexico(new Date()) >= CORTE_TARDE;
     return {
       entrada: null,
+      comidaInicio: null,
+      comidaFin: null,
       salida: null,
+      modalidad: null,
       siguiente: esTarde ? "salida" : "entrada",
     };
   }
 
   return {
     entrada: fila.entrada ? horaEnMexico(fila.entrada) : null,
+    comidaInicio: fila.comidaInicio ? horaEnMexico(fila.comidaInicio) : null,
+    comidaFin: fila.comidaFin ? horaEnMexico(fila.comidaFin) : null,
     salida: fila.salida ? horaEnMexico(fila.salida) : null,
-    // Con la salida puesta el día está cerrado, tenga entrada o no: quien
-    // marcó por primera vez después del corte no tiene entrada y ya terminó.
-    siguiente: fila.salida ? "cerrado" : "salida",
+    modalidad: (fila.modalidad as Modalidad | null) ?? null,
+    siguiente: siguienteMarca(fila),
   };
 }
 
-export async function checarHomeOffice(): Promise<ResultadoHO> {
+/**
+ * Registra una marca.
+ *
+ * `modalidad` solo se usa al abrir el día: a partir de ahí vale la que se
+ * eligió, y las demás marcas no vuelven a preguntar.
+ */
+export async function checarHomeOffice(
+  marca?: Marca,
+  modalidad?: Modalidad,
+): Promise<ResultadoHO> {
   const persona = await exigirPersona();
 
   const hoy = hoyEnMexico();
@@ -108,7 +159,13 @@ export async function checarHomeOffice(): Promise<ResultadoHO> {
 
   const fila = await db.checada.findUnique({
     where: { personaId_fecha: { personaId: persona.id, fecha: dia } },
-    select: { entrada: true, salida: true },
+    select: {
+      entrada: true,
+      salida: true,
+      comidaInicio: true,
+      comidaFin: true,
+      modalidad: true,
+    },
   });
 
   // ── Primer toque del día ────────────────────────────────────────────────
@@ -119,7 +176,12 @@ export async function checarHomeOffice(): Promise<ResultadoHO> {
   if (!fila) {
     // Pasado el corte se registra como SALIDA directamente, sin entrada: a las
     // cuatro de la tarde nadie está empezando su jornada.
-    const esSalida = horaDecimalMexico(ahora) >= CORTE_TARDE;
+    const esSalida =
+      marca === "salida" || horaDecimalMexico(ahora) >= CORTE_TARDE;
+
+    if (!esSalida && !modalidad) {
+      return { ok: false, error: "Elige si estás en la oficina o en casa." };
+    }
 
     await db.checada.create({
       data: {
@@ -128,11 +190,12 @@ export async function checarHomeOffice(): Promise<ResultadoHO> {
         fecha: dia,
         entrada: esSalida ? null : ahora,
         salida: esSalida ? ahora : null,
+        modalidad: modalidad ?? null,
       },
     });
 
-    // Sube ya: la fila aparece en la hoja al momento, y el siguiente toque
-    // actualizará esa misma fila.
+    // Sube ya: la fila aparece en la hoja al momento, y las marcas siguientes
+    // actualizarán esa misma fila.
     sincronizarEnSegundoPlano();
     revalidatePath("/actividad");
     return {
@@ -150,13 +213,43 @@ export async function checarHomeOffice(): Promise<ResultadoHO> {
     };
   }
 
-  // ── Segundo toque: cierra el día ────────────────────────────────────────
+  /*
+   * Qué se está marcando.
+   *
+   * Se acepta lo que pide la pantalla, pero se comprueba contra el estado
+   * real: es una acción de servidor y puede llegar cualquier cosa. Sin
+   * `marca` se toma lo que toque, que es lo que hacía el botón antiguo.
+   */
+  const toca = siguienteMarca(fila);
+  const queHacer: Marca = marca ?? (toca === "cerrado" ? "salida" : toca);
+
+  if (queHacer === "entrada") {
+    return { ok: false, error: "Ya marcaste tu entrada." };
+  }
+  if (queHacer === "comidaInicio" && fila.comidaInicio) {
+    return {
+      ok: false,
+      error: `Ya saliste a comer a las ${horaEnMexico(fila.comidaInicio)}.`,
+    };
+  }
+  if (queHacer === "comidaFin" && !fila.comidaInicio) {
+    return { ok: false, error: "Primero marca tu salida a comer." };
+  }
+
+  const campo =
+    queHacer === "comidaInicio"
+      ? { comidaInicio: ahora }
+      : queHacer === "comidaFin"
+        ? { comidaFin: ahora }
+        : { salida: ahora };
+
   await db.checada.update({
     where: { personaId_fecha: { personaId: persona.id, fecha: dia } },
-    data: { salida: ahora, sheetSync: "pendiente" },
+    // Solo la salida vuelve a la hoja: la comida no tiene columna propia allí.
+    data: { ...campo, sheetSync: "pendiente" },
   });
 
   sincronizarEnSegundoPlano();
   revalidatePath("/actividad");
-  return { ok: true, tipo: "salida", hora: horaEnMexico(ahora) };
+  return { ok: true, tipo: queHacer, hora: horaEnMexico(ahora) };
 }

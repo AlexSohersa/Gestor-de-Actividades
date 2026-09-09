@@ -67,6 +67,18 @@ export type ExtraVista = {
   isCourse: boolean;
 };
 
+/** Los campos del rango del historial: discretos, sin marco propio. */
+const campoFechaHist: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  fontFamily: "inherit",
+  fontSize: 10.5,
+  color: "var(--cv-ink-2)",
+  padding: "2px 0",
+  outline: "none",
+  width: 104,
+};
+
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"] as const;
 
 const COLORES = ["#32D66B", "#39B8B4", "#7669E8", "#F5B843", "#3E7FA6"];
@@ -321,13 +333,23 @@ export function ActividadScreen({
     [],
   );
 
-  // Los filtros del historial salen de los esfuerzos que existen de verdad,
-  // no de una lista fija que puede no coincidir con los catálogos.
-  const filtrosEsfuerzo = useMemo(() => {
+  /*
+   * Filtrar por PROYECTO, no por esfuerzo.
+   *
+   * "Proyecto / Cambios / Retrabajo" clasifica el trabajo, pero nadie busca su
+   * historial por ahí: se busca "qué hice en tal proyecto" o "qué hice entre
+   * estas fechas". La lista sale de los proyectos que de verdad aparecen.
+   */
+  const filtrosProyecto = useMemo(() => {
     const vistos = new Set<string>();
-    for (const h of tablero.historial) if (h.esfuerzo) vistos.add(h.esfuerzo);
+    for (const h of tablero.historial) if (h.proyecto) vistos.add(h.proyecto);
     return ["todos", ...[...vistos].sort()];
   }, [tablero.historial]);
+
+  /** Rango de fechas del historial; vacío = manda la navegación por semanas. */
+  const [desdeHist, setDesdeHist] = useState("");
+  const [hastaHist, setHastaHist] = useState("");
+  const conRangoHist = Boolean(desdeHist || hastaHist);
 
   /*
    * El historial se recorre por semanas, como el reporte.
@@ -367,20 +389,36 @@ export function ActividadScreen({
     return tablero.historial.filter((h) => {
       // Al buscar, se busca en todo: acotar a la semana escondería justo lo
       // que se está tratando de encontrar.
-      if (
+      /*
+       * El rango a medida manda sobre la navegación por semanas: si alguien
+       * puso fechas, quiere ver eso y no la semana en la que esté parado.
+       */
+      if (conRangoHist) {
+        if (desdeHist && h.iso < desdeHist) return false;
+        if (hastaHist && h.iso > hastaHist) return false;
+      } else if (
         !todoElHistorial &&
         !q &&
         (h.iso < rangoHist.ini || h.iso > rangoHist.fin)
       ) {
         return false;
       }
-      if (filtro !== "todos" && h.esfuerzo !== filtro) return false;
+      if (filtro !== "todos" && h.proyecto !== filtro) return false;
       if (!q) return true;
       return `${h.entregable} ${h.proyecto} ${h.comentario} ${h.tipo}`
         .toLowerCase()
         .includes(q);
     });
-  }, [tablero.historial, busqueda, filtro, rangoHist, todoElHistorial]);
+  }, [
+    tablero.historial,
+    busqueda,
+    filtro,
+    rangoHist,
+    todoElHistorial,
+    conRangoHist,
+    desdeHist,
+    hastaHist,
+  ]);
 
   const totalHistorial = historialFiltrado.reduce((n, h) => n + h.horas, 0);
 
@@ -535,11 +573,7 @@ export function ActividadScreen({
                 lineHeight: 1.5,
               }}
             >
-              {tablero.avisoQuincena.rango} · repórtalas al menos dos días antes
-              del pago para recibir tu sueldo completo
-              {tablero.avisoQuincena.diasParaPago > 0
-                ? ` (faltan ${tablero.avisoQuincena.diasParaPago} días)`
-                : ""}
+              {tablero.avisoQuincena.rango}
             </span>
           </span>
         </div>
@@ -777,7 +811,7 @@ export function ActividadScreen({
           [
             ["semana", "Vista semanal"],
             ["historial", "Historial"],
-            ["consulta", "Consultar mi actividad"],
+            ["consulta", "Dashboard"],
           ] as const
         ).map(([v, txt]) => {
           const on = vista === v;
@@ -1613,28 +1647,88 @@ export function ActividadScreen({
                 }}
               />
             </label>
-            {filtrosEsfuerzo.map((f) => {
-              const on = filtro === f;
-              return (
+            {/*
+              El proyecto, en una lista.
+              Son decenas: en chips no cabrían y la barra de filtros ocuparía
+              más que el propio historial.
+            */}
+            <select
+              value={filtro}
+              onChange={(e) => setFiltro(e.target.value)}
+              aria-label="Filtrar por proyecto"
+              style={{
+                border: `1px solid ${filtro !== "todos" ? "var(--cv-navy)" : "var(--cv-line)"}`,
+                background: "#fff",
+                color: "var(--cv-ink-2)",
+                fontFamily: "inherit",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "7px 10px",
+                borderRadius: 10,
+                maxWidth: 230,
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              {filtrosProyecto.map((f) => (
+                <option key={f} value={f}>
+                  {f === "todos" ? "Todos los proyectos" : f}
+                </option>
+              ))}
+            </select>
+
+            {/* Y el rango de fechas, para cuando la semana no basta. */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "4px 9px",
+                borderRadius: 10,
+                border: `1px solid ${conRangoHist ? "var(--cv-navy)" : "var(--cv-line)"}`,
+                background: "#fff",
+              }}
+            >
+              <input
+                type="date"
+                value={desdeHist}
+                max={hastaHist || undefined}
+                onChange={(e) => setDesdeHist(e.target.value)}
+                aria-label="Desde"
+                style={campoFechaHist}
+              />
+              <span style={{ fontSize: 10, color: "var(--cv-ink-4)" }}>a</span>
+              <input
+                type="date"
+                value={hastaHist}
+                min={desdeHist || undefined}
+                onChange={(e) => setHastaHist(e.target.value)}
+                aria-label="Hasta"
+                style={campoFechaHist}
+              />
+              {conRangoHist && (
                 <button
-                  key={f}
                   type="button"
-                  onClick={() => setFiltro(f)}
-                  className="cv-btn"
+                  onClick={() => {
+                    setDesdeHist("");
+                    setHastaHist("");
+                  }}
+                  aria-label="Quitar el rango"
+                  title="Quitar el rango"
                   style={{
-                    border: `1px solid ${on ? "var(--cv-navy)" : "var(--cv-line)"}`,
-                    background: on ? "var(--cv-navy)" : "#fff",
-                    color: on ? "#fff" : "var(--cv-ink-2)",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "7px 12px",
-                    borderRadius: 10,
+                    border: "none",
+                    background: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    color: "var(--cv-ink-4)",
+                    fontSize: 13,
+                    lineHeight: 1,
                   }}
                 >
-                  {f === "todos" ? "Todos" : f}
+                  ×
                 </button>
-              );
-            })}
+              )}
+            </span>
           </div>
 
           {historialFiltrado.length > 0 ? (

@@ -251,6 +251,18 @@ function diasEntre(desdeISO: string, hastaISO: string): number {
 /** Periodos que se pueden consultar en el tablero. */
 export type Periodo = "quincena" | "mes" | "anio";
 
+/**
+ * La ventana del tablero: uno de los periodos fijos, o un rango a medida.
+ *
+ * El rango llega como `desde` y `hasta` en AAAA-MM-DD; cuando falta, manda el
+ * periodo.
+ */
+export type Ventana = {
+  periodo: Periodo;
+  desde?: string | null;
+  hasta?: string | null;
+};
+
 /** Un tablero en blanco, con la forma que espera la pantalla. */
 export function dashboardVacio(
   periodo: Periodo,
@@ -353,13 +365,29 @@ export const cargarDashboard = cache(async function cargarDashboard(
   personaId: string | null,
   verEmpresa: boolean,
   periodo: Periodo = "anio",
+  rango?: {
+    desde?: string | null;
+    hasta?: string | null;
+    /** Ver solo un proyecto, o solo un tipo de actividad. */
+    proyecto?: string | null;
+    tipo?: string | null;
+  },
 ): Promise<Dashboard> {
   const vacio = dashboardVacio(periodo, verEmpresa);
 
-  // Solo el último año: más atrás es arqueología, no seguimiento, y el
-  // tablero tardaría en cargar sin decir nada nuevo.
+  /*
+   * Desde el 1 de enero del año en curso.
+   *
+   * Antes se leían los últimos 365 días, así que "este año" en enero mezclaba
+   * medio año anterior: el 1 de enero de 2027 habría enseñado datos de 2026.
+   * "Este año" tiene que significar el año del calendario.
+   *
+   * Con un rango a medida se lee desde su inicio, que puede ser anterior.
+   */
   const hoy = hoyISO();
-  const desde = sumarDias(hoy, -365);
+  const inicioAnio = `${hoy.slice(0, 4)}-01-01`;
+  const desde =
+    rango?.desde && rango.desde < inicioAnio ? rango.desde : inicioAnio;
 
   // Las cifras de empresa ya no se deducen de las filas leídas: `personasActivas`
   // y `proyectosActivos` son propiedades del padrón (core), y contarlas ahí es
@@ -408,15 +436,33 @@ export const cargarDashboard = cache(async function cargarDashboard(
   // El desglose responde al periodo elegido: la quincena en curso es lo que
   // se revisa a diario, el año entero rara vez dice algo accionable.
   const ventana: string = (() => {
-    if (periodo === "anio") return desde;
+    // Un rango a medida manda sobre el periodo.
+    if (rango?.desde) return rango.desde;
+    if (periodo === "anio") return inicioAnio;
     if (periodo === "mes") return inicioMes;
     return quincenaISO(hoy).ini;
   })();
 
+  /** El final de la ventana; sin rango, hasta hoy. */
+  const ventanaFin: string = rango?.hasta ?? hoy;
+
   // SIEMPRE los proyectos de la persona, aunque vea cifras de empresa: en su
   // tablero le interesan sus horas, no las de todos. Lo de la empresa va
   // aparte, en su propio panel.
-  const base = mias.filter((f) => f.iso >= ventana);
+  /*
+   * La base del desglose: la ventana, y lo que se haya filtrado encima.
+   *
+   * Los filtros se ponen picando en las propias gráficas, así que aplicarlos
+   * aquí hace que TODO el tablero —cifras, proyectos y tipos— hable del mismo
+   * recorte.
+   */
+  const base = mias.filter(
+    (f) =>
+      f.iso >= ventana &&
+      f.iso <= ventanaFin &&
+      (!rango?.proyecto || f.proyecto === rango.proyecto) &&
+      (!rango?.tipo || f.tipo === rango.tipo),
+  );
 
   const nombrePorCodigo = new Map(proyectos.map((p) => [p.codigo, p.nombre]));
 
