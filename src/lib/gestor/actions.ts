@@ -503,6 +503,40 @@ export async function solicitarAusencia(
   // A quién se le manda. La pantalla envía el id de la persona elegida.
   const enviadaA = String(form.get("sentTo") ?? "").trim();
 
+  /*
+   * Quién cubre y si se le puede localizar.
+   *
+   * Van sin obligar: hay ausencias que no dejan trabajo a nadie —media hora
+   * de llegada tarde— y exigirlas ahí sería ruido.
+   */
+  const backup = String(form.get("backup") ?? "").trim().slice(0, 160) || null;
+
+  const dispCruda = String(form.get("availability") ?? "").trim().toUpperCase();
+  const disponibilidad = ["NULA", "MENSAJES", "URGENCIAS", "OTRA"].includes(
+    dispCruda,
+  )
+    ? dispCruda
+    : null;
+
+  // La nota solo tiene sentido con "OTRA": en los demás casos el propio valor
+  // ya lo dice todo.
+  const disponibilidadNota =
+    disponibilidad === "OTRA"
+      ? String(form.get("availabilityNote") ?? "").trim().slice(0, 120) || null
+      : null;
+
+  /*
+   * "Otra" sin explicar no es una disponibilidad.
+   *
+   * Se guardaba igual, y luego la pantalla no tenía qué enseñar —la clave
+   * "OTRA" no le dice a nadie cómo localizar a quien falta—, así que la fila
+   * desaparecía del calendario y quedaba como si no se hubiera capturado
+   * nada. Vale más pedir la frase que guardar un hueco.
+   */
+  if (disponibilidad === "OTRA" && !disponibilidadNota) {
+    return { ok: false, error: "Escribe cómo pueden localizarte." };
+  }
+
   if (!tipo) return { ok: false, error: "Elige un tipo de ausencia." };
   if (!enviadaA) {
     return { ok: false, error: "Elige a quién le mandas la solicitud." };
@@ -561,6 +595,9 @@ export async function solicitarAusencia(
       motivo: motivo || null,
       estado: "PENDIENTE",
       enviadaA,
+      backup,
+      disponibilidad,
+      disponibilidadNota,
     },
   });
 

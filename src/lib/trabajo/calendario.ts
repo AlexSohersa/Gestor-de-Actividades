@@ -21,6 +21,19 @@ export type DiaOcupado = {
   tipo: string;
   /** Horas, cuando no es día completo. */
   horas: number | null;
+
+  /*
+   * El rango entero al que pertenece el día, y con quién contar mientras.
+   *
+   * El calendario solo necesita el día para pintarlo, pero al abrirlo la
+   * pregunta siguiente siempre es la misma: cuánto falta, quién lo cubre y si
+   * se le puede escribir. Sale de la misma consulta, así que viaja con el día.
+   */
+  desde: string;
+  hasta: string;
+  backup: string | null;
+  disponibilidad: string | null;
+  disponibilidadNota: string | null;
 };
 
 /**
@@ -51,6 +64,9 @@ export async function ausenciasDelEquipo(
       horas: true,
       fechaInicio: true,
       fechaFin: true,
+      backup: true,
+      disponibilidad: true,
+      disponibilidadNota: true,
       persona: { select: { nombre: true, nombreUsuario: true } },
     },
   });
@@ -69,6 +85,8 @@ export async function ausenciasDelEquipo(
   for (const f of filas) {
     const d = new Date(f.fechaInicio);
     const fin = new Date(f.fechaFin);
+    const desdeAus = f.fechaInicio.toISOString().slice(0, 10);
+    const hastaAus = f.fechaFin.toISOString().slice(0, 10);
 
     while (d <= fin) {
       const semana = d.getUTCDay();
@@ -81,6 +99,11 @@ export async function ausenciasDelEquipo(
           nombre: f.persona.nombreUsuario ?? f.persona.nombre,
           tipo: f.tipo,
           horas: f.horas === null ? null : Number(f.horas),
+          desde: desdeAus,
+          hasta: hastaAus,
+          backup: f.backup,
+          disponibilidad: f.disponibilidad,
+          disponibilidadNota: f.disponibilidadNota,
         });
       }
 

@@ -140,6 +140,15 @@ model Ausencia {
   /// Estado de la copia a Google Sheets: "pendiente" · "env-…" (reservada por
   /// una corrida) · "ok" · "hoja" (vino de ahí, no hay que devolverla).
   sheetSync     String    @default("pendiente") @map("sheet_sync")
+  /// Quién cubre el trabajo durante la ausencia.
+  ///
+  /// Texto libre porque pueden ser varias personas, y a veces alguien que no
+  /// está en el padrón —un proveedor, un contacto del cliente—.
+  backup        String?
+  /// Si se le puede localizar: NULA · MENSAJES · URGENCIAS · OTRA.
+  disponibilidad String?
+  /// El detalle cuando la disponibilidad es "OTRA".
+  disponibilidadNota String? @map("disponibilidad_nota")
   periodo       Int?
   creadoEn      DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
   actualizadoEn DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)

@@ -35,6 +35,19 @@ export type AbsenceView = {
   detail: string | null;
   /// A quién se envió la solicitud para su visto bueno.
   sentTo: string | null;
+
+  /*
+   * Con quién contar mientras dura la ausencia.
+   *
+   * Se piden al SOLICITAR, no al aprobar: quien pide es quien sabe con quién
+   * habló, y quien decide necesita verlo para poder decidir. Las tres son
+   * opcionales —media hora de llegada tarde no deja trabajo a nadie—.
+   */
+  backup: string | null;
+  /// NULA · MENSAJES · URGENCIAS · OTRA.
+  availability: string | null;
+  /// Lo que se escribió cuando la disponibilidad es OTRA.
+  availabilityNote: string | null;
   status: string;
   /// De qué bloques salieron los días, cuando son vacaciones.
   ///
@@ -119,6 +132,9 @@ export const loadAusencias = cache(async function loadAusencias(
       horas: true,
       motivo: true,
       estado: true,
+      backup: true,
+      disponibilidad: true,
+      disponibilidadNota: true,
       persona: { select: { nombre: true } },
       destinatario: { select: { nombre: true } },
       decisorPor: { select: { nombre: true } },
@@ -168,6 +184,9 @@ export const loadAusencias = cache(async function loadAusencias(
       // necesita saber ("¿quién me la tiene que aprobar?"); una vez resuelta,
       // quien la decidió suele ser la misma persona.
       sentTo: f.destinatario?.nombre ?? f.decisorPor?.nombre ?? null,
+      backup: f.backup,
+      availability: f.disponibilidad,
+      availabilityNote: f.disponibilidadNota,
       // De qué bloques salieron los días. Vacío en lo importado de la hoja:
       // el gestor antiguo no guardaba ese detalle.
       blocks: f.bloques.map((b) => ({

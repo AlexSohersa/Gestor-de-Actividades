@@ -79,6 +79,25 @@ function fechaCorta(iso: string): string {
   }).format(new Date(iso));
 }
 
+/**
+ * La disponibilidad, en la frase que la gente lee.
+ *
+ * La base guarda la clave —NULA, MENSAJES, URGENCIAS, OTRA— porque es lo que
+ * se puede filtrar y contar; la pantalla nunca la enseña tal cual: "MENSAJES"
+ * no dice si esa persona lee mensajes o si hay que mandárselos.
+ */
+function textoDisponibilidad(
+  clave: string | null,
+  nota: string | null,
+): string | null {
+  if (!clave) return null;
+  if (clave === "NULA") return "Sin disponibilidad";
+  if (clave === "MENSAJES") return "Disponible por mensajes";
+  if (clave === "URGENCIAS") return "Solo para urgencias";
+  // "OTRA" sin nota no dice nada; se prefiere callar a enseñar la clave.
+  return nota?.trim() || null;
+}
+
 function rango(a: AbsenceView): string {
   const s = new Date(a.startDate);
   const e = new Date(a.endDate);
@@ -130,6 +149,13 @@ export function AusenciasScreen({
     nombre: string;
     tipo: string;
     horas: number | null;
+    /// El rango entero, para decir cuánto le falta a quien está fuera.
+    desde: string;
+    hasta: string;
+    /// Con quién contar mientras: se pide al solicitar la ausencia.
+    backup: string | null;
+    disponibilidad: string | null;
+    disponibilidadNota: string | null;
   }[];
   /// Tipos del catálogo real, no una lista escrita a mano.
   tipos: string[];
@@ -279,6 +305,14 @@ export function AusenciasScreen({
       month: "long",
     }).format(new Date(`${iso}T12:00:00.000Z`));
 
+  /** El día sin el nombre de la semana: para rangos, donde ya hay dos. */
+  const diaCorto = (iso: string) =>
+    new Intl.DateTimeFormat("es-MX", {
+      timeZone: "UTC",
+      day: "numeric",
+      month: "short",
+    }).format(new Date(`${iso}T12:00:00.000Z`));
+
   const CELDA_UI = {
     fuera: { bg: "transparent", c: "var(--cv-faint)", ring: "none", w: 500 },
     normal: {
@@ -308,28 +342,6 @@ export function AusenciasScreen({
   };
 
   /* ------------------------------ el anillo ---------------------------- */
-  /*
-   * Contra qué se compara lo disponible: los días QUE HAY en los bloques
-   * liberados, no lo disponible más lo usado.
-   *
-   * `dias` es lo que QUEDA y `usados` lo ya tomado de ese mismo bloque, así
-   * que juntos dan lo que se otorgó: "10 de 12" para quien tenía doce días
-   * liberados y tomó dos. Es el número que enseña el gestor oficial.
-   *
-   * Antes se sumaba el contador de vacaciones del año, que incluye las
-   * importadas de la hoja —ya restadas de `dias`—: eso las contaba dos veces
-   * y daba totales inventados como "9 de 20".
-   *
-   * Los bloques que aún no se liberan quedan fuera a propósito: se anuncian
-   * aparte, porque no se pueden tomar todavía.
-   */
-  const totalOtorgado = saldo.bloques.reduce(
-    (n, b) => n + b.dias + b.usados,
-    0,
-  );
-  const CIRCUNFERENCIA = 2 * Math.PI * 40;
-  const anilloUsado =
-    totalOtorgado > 0 ? (disponibles / totalOtorgado) * CIRCUNFERENCIA : 0;
 
   // El chip muestra SOLO la siguiente liberación: sumar los tres decía "22
   // se liberan pronto" cuando el último bloque está a 15 meses.
@@ -693,73 +705,41 @@ export function AusenciasScreen({
                   gap: 17,
                 }}
               >
+                {/*
+                  Solo los días que quedan.
+
+                  Antes iba dentro de un anillo con un "de 25" debajo, pero ese
+                  total no significa nada para quien lo lee: mezcla periodos y
+                  cambia con la antigüedad. Lo único accionable es cuántos días
+                  puede tomar hoy.
+                */}
                 <span
                   style={{
-                    position: "relative",
-                    width: 86,
-                    height: 86,
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 5,
                     flexShrink: 0,
                   }}
                 >
-                  <svg
-                    viewBox="0 0 100 100"
+                  <span
+                    className="soh-display"
                     style={{
-                      width: 86,
-                      height: 86,
-                      transform: "rotate(-90deg)",
+                      fontSize: 44,
+                      fontWeight: 700,
+                      color: "#fff",
+                      lineHeight: 1,
                     }}
-                    aria-hidden="true"
                   >
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke="rgba(255,255,255,.11)"
-                      strokeWidth="9"
-                    />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke="var(--cv-green)"
-                      strokeWidth="9"
-                      strokeLinecap="round"
-                      strokeDasharray={`${anilloUsado} ${CIRCUNFERENCIA}`}
-                    />
-                  </svg>
+                    {fmt(disponibles)}
+                  </span>
                   <span
                     style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "var(--cv-dk-3)",
                     }}
                   >
-                    <span
-                      className="soh-display"
-                      style={{
-                        fontSize: 27,
-                        fontWeight: 700,
-                        color: "#fff",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {fmt(disponibles)}
-                    </span>
-                    <span
-                      className="soh-mono"
-                      style={{
-                        fontSize: 8.5,
-                        color: "var(--cv-dk-3)",
-                        letterSpacing: ".06em",
-                      }}
-                    >
-                      DE {fmt(totalOtorgado)}
-                    </span>
+                    {disponibles === 1 ? "día" : "días"}
                   </span>
                 </span>
 
@@ -1430,58 +1410,150 @@ export function AusenciasScreen({
                           style={{
                             display: "flex",
                             flexDirection: "column",
-                            gap: 5,
+                            gap: 7,
                           }}
                         >
                           {/* Lo propio primero y en verde: es lo que se busca. */}
                           {[...mios, ...otros].map((e, i) => {
                             const esMio = e.personaId === yoId;
+
+                            /*
+                              Una ausencia de un día no necesita rango: "18 de
+                              sept al 18 de sept" gasta una linea entera en no
+                              decir nada.
+                            */
+                            const variosDias = e.desde !== e.hasta;
+
                             return (
-                              <span
+                              <div
                                 key={`${e.personaId}-${i}`}
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  fontSize: 11.5,
+                                  borderRadius: 10,
+                                  border: `1px solid ${
+                                    esMio
+                                      ? "rgba(23,138,73,.28)"
+                                      : "var(--cv-line-soft)"
+                                  }`,
+                                  background: esMio
+                                    ? "rgba(23,138,73,.05)"
+                                    : "#fff",
+                                  padding: "8px 10px",
                                 }}
                               >
-                                <span
-                                  aria-hidden="true"
-                                  style={{
-                                    width: 6,
-                                    height: 6,
-                                    borderRadius: 999,
-                                    background: esMio
-                                      ? "var(--cv-green)"
-                                      : "var(--cv-line)",
-                                    flexShrink: 0,
-                                  }}
-                                />
+                                {/* quién falta y por qué */}
                                 <span
                                   style={{
-                                    fontWeight: esMio ? 700 : 500,
-                                    color: esMio
-                                      ? "#178A49"
-                                      : "var(--cv-ink-2)",
-                                    flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 7,
+                                    flexWrap: "wrap",
                                   }}
                                 >
-                                  {esMio ? "Tú" : e.nombre}
+                                  <span
+                                    aria-hidden="true"
+                                    style={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: 999,
+                                      background: esMio
+                                        ? "var(--cv-green)"
+                                        : "var(--cv-line)",
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: 11.5,
+                                      fontWeight: esMio ? 700 : 600,
+                                      color: esMio
+                                        ? "#178A49"
+                                        : "var(--cv-ink)",
+                                    }}
+                                  >
+                                    {esMio ? "Tú" : e.nombre}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 9.5,
+                                      fontWeight: 700,
+                                      letterSpacing: ".04em",
+                                      color: "var(--cv-ink-3)",
+                                      background: "var(--cv-faint)",
+                                      border: "1px solid var(--cv-line-soft)",
+                                      borderRadius: 999,
+                                      padding: "2px 7px",
+                                    }}
+                                  >
+                                    {e.tipo}
+                                    {e.horas !== null && ` · ${fmt(e.horas)} h`}
+                                  </span>
                                 </span>
-                                <span
-                                  style={{
-                                    color: "var(--cv-ink-4)",
-                                    fontSize: 10.5,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {e.tipo}
-                                  {e.horas !== null && ` · ${fmt(e.horas)} h`}
-                                </span>
-                              </span>
+
+                                {/* el rango, cuando dura más de un día */}
+                                {variosDias && (
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      marginTop: 4,
+                                      marginLeft: 13,
+                                      fontSize: 10.5,
+                                      color: "var(--cv-ink-4)",
+                                    }}
+                                  >
+                                    Del {diaCorto(e.desde)} al{" "}
+                                    {diaCorto(e.hasta)}
+                                  </span>
+                                )}
+
+                                {/*
+                                  Con quién contar mientras.
+
+                                  Es la razón por la que alguien abre un día del
+                                  calendario: no basta con saber que falta, hace
+                                  falta saber a quién escribirle.
+                                */}
+                                {(e.backup || e.disponibilidad) && (
+                                  <span
+                                    style={{
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: "3px 12px",
+                                      marginTop: 6,
+                                      marginLeft: 13,
+                                      paddingTop: 6,
+                                      borderTop:
+                                        "1px solid var(--cv-line-soft)",
+                                    }}
+                                  >
+                                    {e.backup && (
+                                      <span
+                                        style={{
+                                          fontSize: 10.5,
+                                          color: "var(--cv-ink-3)",
+                                        }}
+                                      >
+                                        Cubre{" "}
+                                        <b style={{ color: "var(--cv-ink-2)" }}>
+                                          {e.backup}
+                                        </b>
+                                      </span>
+                                    )}
+                                    {e.disponibilidad && (
+                                      <span
+                                        style={{
+                                          fontSize: 10.5,
+                                          color: "var(--cv-ink-3)",
+                                        }}
+                                      >
+                                        {textoDisponibilidad(
+                                          e.disponibilidad,
+                                          e.disponibilidadNota,
+                                        )}
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
@@ -1871,6 +1943,58 @@ export function AusenciasScreen({
                         {a.sentTo ? ` · enviada a ${a.sentTo}` : ""}
                         {a.detail ? ` · ${a.detail}` : ""}
                       </span>
+
+                      {/*
+                        Con quién contar mientras, en su propia línea.
+
+                        Es justo lo que se pregunta antes de aprobar, y
+                        encadenarlo con puntos medios detrás del motivo lo
+                        escondía en una línea que ya trae cuatro datos.
+                      */}
+                      {(a.backup ||
+                        textoDisponibilidad(
+                          a.availability,
+                          a.availabilityNote,
+                        )) && (
+                        <span
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "2px 10px",
+                            marginTop: 4,
+                          }}
+                        >
+                          {a.backup && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: "var(--cv-ink-3)",
+                              }}
+                            >
+                              Cubre{" "}
+                              <b style={{ color: "var(--cv-ink-2)" }}>
+                                {a.backup}
+                              </b>
+                            </span>
+                          )}
+                          {textoDisponibilidad(
+                            a.availability,
+                            a.availabilityNote,
+                          ) && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: "var(--cv-ink-3)",
+                              }}
+                            >
+                              {textoDisponibilidad(
+                                a.availability,
+                                a.availabilityNote,
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </span>
                     <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                       <button
@@ -2148,6 +2272,30 @@ export function AusenciasScreen({
                   ],
                   ["Enviada a", detalle.sentTo ?? "Sin destinatario"],
                   /*
+                    Con quién contar mientras.
+
+                    Solo aparecen si se capturaron: una llegada tarde no deja
+                    trabajo a nadie, y una fila "Quién cubre — —" solo añade
+                    ruido a un panel que ya tiene siete.
+                  */
+                  ...(detalle.backup
+                    ? ([["Quién cubre", detalle.backup]] as const)
+                    : []),
+                  ...(textoDisponibilidad(
+                    detalle.availability,
+                    detalle.availabilityNote,
+                  )
+                    ? ([
+                        [
+                          "Disponibilidad",
+                          textoDisponibilidad(
+                            detalle.availability,
+                            detalle.availabilityNote,
+                          ) as string,
+                        ],
+                      ] as const)
+                    : []),
+                  /*
                     De qué periodo salieron los días.
 
                     Unas vacaciones pueden repartirse entre varios bloques: con
@@ -2311,6 +2459,9 @@ function FormSolicitud({
    */
   const [otroRato, setOtroRato] = useState(false);
   const [razon, setRazon] = useState("");
+  /** Quién cubre y si se le puede localizar durante la ausencia. */
+  const [backup, setBackup] = useState("");
+  const [disponibilidad, setDisponibilidad] = useState("");
   const [enviarA, setEnviarA] = useState("");
   const [pendiente, startTransition] = useTransition();
 
@@ -3015,6 +3166,84 @@ function FormSolicitud({
                   lineHeight: 1.5,
                 }}
               />
+            </div>
+
+            {/*
+              Quién cubre y si se le puede localizar.
+
+              Se pide al SOLICITAR y no al aprobar: quien pide sabe con quién
+              habló, y quien decide necesita verlo para poder decidir. Además
+              queda en el calendario, que es donde el resto del equipo lo busca
+              cuando alguien falta.
+            */}
+            <div>
+              <span style={rotuloCampo}>Quién te cubre</span>
+              <input
+                name="backup"
+                value={backup}
+                onChange={(e) => setBackup(e.target.value)}
+                placeholder="Nombre de quien queda a cargo"
+                maxLength={160}
+                style={campo}
+              />
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  color: "var(--cv-ink-4)",
+                  marginTop: 4,
+                }}
+              >
+                Puede ser más de una persona. Déjalo vacío si no aplica.
+              </span>
+            </div>
+
+            <div>
+              <span style={rotuloCampo}>Tu disponibilidad</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(
+                  [
+                    ["NULA", "Nula"],
+                    ["MENSAJES", "Mensajes"],
+                    ["URGENCIAS", "Urgencias"],
+                    ["OTRA", "Otra"],
+                  ] as const
+                ).map(([v, texto]) => {
+                  const on = disponibilidad === v;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setDisponibilidad(on ? "" : v)}
+                      aria-pressed={on}
+                      className="cv-btn"
+                      style={{
+                        border: `1px solid ${on ? "var(--cv-navy)" : "var(--cv-line)"}`,
+                        background: on ? "var(--cv-navy)" : "#fff",
+                        color: on ? "#fff" : "var(--cv-ink-2)",
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        padding: "7px 13px",
+                        borderRadius: 10,
+                      }}
+                    >
+                      {texto}
+                    </button>
+                  );
+                })}
+              </div>
+              <input type="hidden" name="availability" value={disponibilidad} />
+
+              {/* "Otra" necesita explicarse, o no dice nada. */}
+              {disponibilidad === "OTRA" && (
+                <input
+                  name="availabilityNote"
+                  autoFocus
+                  maxLength={120}
+                  placeholder="¿Cómo pueden localizarte?"
+                  style={{ ...campo, marginTop: 7 }}
+                />
+              )}
             </div>
 
             {/* enviar a — el campo que el Gestor exigía */}

@@ -62,14 +62,29 @@ export async function catalogosActividad(): Promise<{
   };
 }
 
-/** Los tipos de ausencia, del mismo catálogo. */
+/**
+ * Los tipos de ausencia que se pueden pedir HOY.
+ *
+ * Fijos y no del catálogo del portal: ahí quedaban once, con tres que ya no se
+ * usan —"AUSENCIA" a secas, "CAMBIO DE HORARIO" y "OTRO"— y que solo servían
+ * para que la gente eligiera mal. Los históricos con esos tipos se conservan;
+ * lo que desaparece es la posibilidad de pedir uno nuevo.
+ *
+ * El orden es el de uso: las vacaciones arriba, lo excepcional abajo.
+ */
+const TIPOS_AUSENCIA = [
+  "VACACIONES",
+  "TIEMPO POR TIEMPO",
+  "PERMISO CON GOCE DE SUELDO",
+  "PERMISO SIN GOCE DE SUELDO",
+  "INCAPACIDAD",
+  "HOME OFFICE",
+  "LLEGADA TARDE",
+  "SALIDA TEMPRANO",
+] as const;
+
 export async function catalogoAusencias(): Promise<string[]> {
-  const filas = await db.$queryRaw<{ value: string }[]>`
-    SELECT value FROM public."Catalog"
-    WHERE active AND kind = 'ausencia'
-    ORDER BY position, value
-  `;
-  return filas.map((f) => f.value);
+  return [...TIPOS_AUSENCIA];
 }
 
 /** Las fallas de mantenimiento, agrupadas por SOFTWARE / HARDWARE. */
