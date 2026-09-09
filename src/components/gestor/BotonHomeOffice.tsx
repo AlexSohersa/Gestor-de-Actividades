@@ -62,10 +62,20 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
 
   const cerrado = local.siguiente === "cerrado";
 
-  const marcar = (marca: Marca, modalidad?: Modalidad) =>
+  /*
+   * Elegir dónde NO marca nada todavía.
+   *
+   * Solo abre el panel de la jornada; la modalidad viaja al servidor con la
+   * primera marca que se registre, sea la que sea. Así quien empieza por su
+   * comida no acaba con una entrada que nunca hizo.
+   */
+  const elegirDonde = (m: Modalidad) =>
+    setLocal((v) => ({ ...v, modalidad: m }));
+
+  const marcar = (marca: Marca) =>
     startTransition(async () => {
       setAviso(null);
-      const r = await checarHomeOffice(marca, modalidad);
+      const r = await checarHomeOffice(marca, local.modalidad ?? undefined);
       if (!r.ok) {
         setAviso(r.error ?? "No se pudo registrar.");
         return;
@@ -74,7 +84,7 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
       // Se actualiza aquí mismo en vez de esperar a que el servidor repinte:
       // la hora aparece al instante, que es lo que confirma que quedó.
       setLocal((v) => {
-        const nuevo = { ...v, modalidad: modalidad ?? v.modalidad };
+        const nuevo = { ...v };
         if (marca === "entrada") nuevo.entrada = r.hora ?? null;
         if (marca === "comidaInicio") nuevo.comidaInicio = r.hora ?? null;
         if (marca === "comidaFin") nuevo.comidaFin = r.hora ?? null;
@@ -223,11 +233,13 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
 
               <div style={{ padding: "16px 20px 18px" }}>
                 {/*
-                  Sin entrada, lo primero es DÓNDE.
-                  Dos opciones grandes y con icono: es la única decisión del
-                  día y conviene que no se confundan entre sí.
+                  Lo PRIMERO es dónde, y solo se pregunta una vez al día.
+
+                  Se mira la modalidad y no la entrada: quien elige dónde y
+                  luego marca su comida —porque olvidó apuntar la entrada—
+                  ya no tiene que volver a decirlo.
                 */}
-                {!local.entrada && !cerrado ? (
+                {!local.modalidad && !cerrado ? (
                   <>
                     <span
                       className="soh-mono"
@@ -253,7 +265,7 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                           key={valor}
                           type="button"
                           disabled={pendiente}
-                          onClick={() => marcar("entrada", valor)}
+                          onClick={() => elegirDonde(valor)}
                           style={{
                             flex: 1,
                             display: "flex",
@@ -309,15 +321,24 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                   >
                     {PASOS.map(({ marca, titulo, pie, Icono }) => {
                       const h = hora(marca);
-                      const toca = local.siguiente === marca;
                       const hecho = Boolean(h);
+                      // `toca` solo RESALTA lo que viene a continuación; todo
+                      // lo que no esté marcado se puede pulsar, en el orden
+                      // que sea. Quien olvidó apuntar su comida la registra
+                      // cuando se acuerde.
+                      const toca = local.siguiente === marca && !hecho;
 
                       return (
                         <button
                           key={marca}
                           type="button"
-                          disabled={!toca || pendiente}
+                          disabled={hecho || pendiente}
                           onClick={() => marcar(marca)}
+                          title={
+                            hecho
+                              ? `Registrado a las ${h}`
+                              : `Marcar ${titulo.toLowerCase()}`
+                          }
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -328,16 +349,27 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                             border: `1px solid ${
                               toca ? "var(--cv-green)" : "var(--cv-line-soft)"
                             }`,
-                            background: toca
-                              ? "#F1FBF5"
-                              : hecho
-                                ? "#fff"
-                                : "var(--cv-faint)",
-                            cursor: toca && !pendiente ? "pointer" : "default",
+                            background: toca ? "#F1FBF5" : "#fff",
+                            cursor: hecho || pendiente ? "default" : "pointer",
                             fontFamily: "inherit",
                             textAlign: "left",
-                            opacity: !toca && !hecho ? 0.55 : 1,
+                            // Lo ya registrado se atenúa; lo pendiente se ve
+                            // igual de disponible, toque o no toque.
+                            opacity: hecho ? 0.72 : 1,
                             transition: "border-color .12s, background .12s",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (hecho || pendiente) return;
+                            e.currentTarget.style.borderColor = "var(--cv-green)";
+                            e.currentTarget.style.background = "#F1FBF5";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = toca
+                              ? "var(--cv-green)"
+                              : "var(--cv-line-soft)";
+                            e.currentTarget.style.background = toca
+                              ? "#F1FBF5"
+                              : "#fff";
                           }}
                         >
                           <span
@@ -350,16 +382,8 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                               alignItems: "center",
                               justifyContent: "center",
                               flexShrink: 0,
-                              background: hecho
-                                ? "#E4F8EB"
-                                : toca
-                                  ? "#fff"
-                                  : "var(--cv-line-soft)",
-                              color: hecho
-                                ? "#178A49"
-                                : toca
-                                  ? "#178A49"
-                                  : "var(--cv-ink-4)",
+                              background: hecho ? "#E4F8EB" : "var(--cv-faint)",
+                              color: hecho ? "#178A49" : "#178A49",
                             }}
                           >
                             {hecho ? <Check size={15} strokeWidth={2.6} /> : <Icono size={15} />}
@@ -384,7 +408,7 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                                 marginTop: 1,
                               }}
                             >
-                              {hecho ? "Registrado" : toca ? pie : "Aún no"}
+                              {hecho ? "Registrado" : pie}
                             </span>
                           </span>
 
@@ -397,7 +421,7 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                               flexShrink: 0,
                             }}
                           >
-                            {h ?? (toca ? "Marcar" : "—")}
+                            {h ?? "Marcar"}
                           </span>
                         </button>
                       );

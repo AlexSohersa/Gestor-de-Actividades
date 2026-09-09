@@ -78,11 +78,11 @@ export type ResultadoHO = {
 };
 
 /**
- * Qué marca toca según lo que ya se hizo.
+ * Qué marca SUGIERE la pantalla, para resaltarla.
  *
- * El orden es el del día: se entra, se sale a comer, se vuelve y se cierra.
- * La comida se puede saltar —quien no sale a comer pulsa directamente la
- * salida—, así que no bloquea el cierre.
+ * Es una sugerencia, no una regla: se puede marcar cualquiera en cualquier
+ * momento. Quien olvidó apuntar su comida a media mañana tiene que poder
+ * hacerlo después sin que el sistema se lo impida.
  */
 function siguienteMarca(f: {
   entrada: Date | null;
@@ -174,22 +174,25 @@ export async function checarHomeOffice(
   // domingo de octubre la 01:30 ocurre dos veces y una hora sin zona no sabe
   // cuál de las dos es.
   if (!fila) {
-    // Pasado el corte se registra como SALIDA directamente, sin entrada: a las
-    // cuatro de la tarde nadie está empezando su jornada.
-    const esSalida =
-      marca === "salida" || horaDecimalMexico(ahora) >= CORTE_TARDE;
-
-    if (!esSalida && !modalidad) {
-      return { ok: false, error: "Elige si estás en la oficina o en casa." };
-    }
+    /*
+     * Se registra LA MARCA QUE SE PIDIÓ, sea cual sea.
+     *
+     * Sin marca explícita se decide por la hora: pasado el corte de las 3:30
+     * el primer toque es una SALIDA, porque a esa hora nadie está empezando
+     * su jornada. Es la regla del gestor de siempre.
+     */
+    const primera: Marca =
+      marca ?? (horaDecimalMexico(ahora) >= CORTE_TARDE ? "salida" : "entrada");
 
     await db.checada.create({
       data: {
         id: randomUUID(),
         personaId: persona.id,
         fecha: dia,
-        entrada: esSalida ? null : ahora,
-        salida: esSalida ? ahora : null,
+        entrada: primera === "entrada" ? ahora : null,
+        comidaInicio: primera === "comidaInicio" ? ahora : null,
+        comidaFin: primera === "comidaFin" ? ahora : null,
+        salida: primera === "salida" ? ahora : null,
         modalidad: modalidad ?? null,
       },
     });
@@ -198,50 +201,72 @@ export async function checarHomeOffice(
     // actualizarán esa misma fila.
     sincronizarEnSegundoPlano();
     revalidatePath("/actividad");
-    return {
-      ok: true,
-      tipo: esSalida ? "salida" : "entrada",
-      hora: horaEnMexico(ahora),
-    };
-  }
-
-  // ── El día ya está cerrado ──────────────────────────────────────────────
-  if (fila.salida) {
-    return {
-      ok: false,
-      error: `Ya cerraste el día a las ${horaEnMexico(fila.salida)}.`,
-    };
+    return { ok: true, tipo: primera, hora: horaEnMexico(ahora) };
   }
 
   /*
-   * Qué se está marcando.
+   * La modalidad se guarda en cuanto llega, aunque el día ya estuviera
+   * abierto: quien marcó primero por el corte de la tarde y luego eligió
+   * dónde no debe quedarse sin ese dato.
+   */
+  if (modalidad && !fila.modalidad) {
+    await db.checada.update({
+      where: { personaId_fecha: { personaId: persona.id, fecha: dia } },
+      data: { modalidad },
+    });
+  }
+
+  /*
+   * Haber marcado la salida NO cierra el día para las demás marcas.
    *
-   * Se acepta lo que pide la pantalla, pero se comprueba contra el estado
-   * real: es una acción de servidor y puede llegar cualquier cosa. Sin
-   * `marca` se toma lo que toque, que es lo que hacía el botón antiguo.
+   * Es justo el caso de quien se acuerda al final: cierra, y entonces cae en
+   * que no había apuntado la comida. Impedirlo lo dejaría sin forma de
+   * completar su jornada.
+   */
+
+  /*
+   * Qué se está marcando. SIN orden obligatorio.
+   *
+   * Se puede registrar cualquier momento en cualquier instante: quien olvidó
+   * marcar su comida la apunta al volver, y quien empieza el día con la salida
+   * —porque llegó tarde a la herramienta— también puede.
+   *
+   * Lo único que se impide es PISAR una marca que ya tiene hora: eso no sería
+   * corregir, sería perder el dato original sin avisar.
    */
   const toca = siguienteMarca(fila);
   const queHacer: Marca = marca ?? (toca === "cerrado" ? "salida" : toca);
 
-  if (queHacer === "entrada") {
-    return { ok: false, error: "Ya marcaste tu entrada." };
-  }
-  if (queHacer === "comidaInicio" && fila.comidaInicio) {
+  const yaTiene =
+    queHacer === "entrada"
+      ? fila.entrada
+      : queHacer === "comidaInicio"
+        ? fila.comidaInicio
+        : queHacer === "comidaFin"
+          ? fila.comidaFin
+          : fila.salida;
+
+  if (yaTiene) {
+    const como = {
+      entrada: "tu entrada",
+      comidaInicio: "tu salida a comer",
+      comidaFin: "tu regreso de comer",
+      salida: "tu salida",
+    }[queHacer];
     return {
       ok: false,
-      error: `Ya saliste a comer a las ${horaEnMexico(fila.comidaInicio)}.`,
+      error: `Ya registraste ${como} a las ${horaEnMexico(yaTiene)}.`,
     };
-  }
-  if (queHacer === "comidaFin" && !fila.comidaInicio) {
-    return { ok: false, error: "Primero marca tu salida a comer." };
   }
 
   const campo =
-    queHacer === "comidaInicio"
-      ? { comidaInicio: ahora }
-      : queHacer === "comidaFin"
-        ? { comidaFin: ahora }
-        : { salida: ahora };
+    queHacer === "entrada"
+      ? { entrada: ahora }
+      : queHacer === "comidaInicio"
+        ? { comidaInicio: ahora }
+        : queHacer === "comidaFin"
+          ? { comidaFin: ahora }
+          : { salida: ahora };
 
   await db.checada.update({
     where: { personaId_fecha: { personaId: persona.id, fecha: dia } },

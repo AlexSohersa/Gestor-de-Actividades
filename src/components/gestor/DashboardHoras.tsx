@@ -313,7 +313,11 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
             valor={fmt(d.totalEmpresa)}
             unidad="h"
             label={`la empresa · ${d.proyectosActivos} proyectos · ${d.personasActivas} personas`}
-            color="#39B8B4"
+            color="var(--cv-green)"
+            // El azul oscuro que tenía en su tarjeta grande: distingue de un
+            // vistazo la cifra de la empresa de las tres que son tuyas.
+            fondo="linear-gradient(150deg, var(--cv-navy), var(--cv-deep))"
+            claro
           />
         )}
       </div>
