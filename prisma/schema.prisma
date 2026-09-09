@@ -21,7 +21,11 @@ generator client {
   previewFeatures = ["multiSchema"]
   // Vercel corre Linux; sin esto Prisma solo trae el motor de Windows y en
   // producción toda consulta falla.
-  binaryTargets   = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
+  // Solo los dos que hacen falta: el del equipo de quien desarrolla
+  // (`native`) y el de Vercel (`rhel-openssl-3.0.x`). Cada motor pesa unos
+  // 16 MB y viaja en CADA función desplegada; incluir el de Debian "por si
+  // acaso" multiplicaba el tamaño del despliegue sin usarse nunca.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
