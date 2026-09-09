@@ -18,6 +18,7 @@ import {
 import type { AbsenceView } from "@/lib/trabajo/queries";
 import type { SaldoVacaciones } from "@/lib/gestor/queries";
 import { CvPortal } from "@/components/conexion/CvPortal";
+import { CvComboMulti } from "@/components/conexion/CvComboMulti";
 import { ausenciasDelMes } from "@/lib/trabajo/acciones-calendario";
 
 /**
@@ -80,6 +81,21 @@ function fechaCorta(iso: string): string {
 }
 
 /**
+ * Los nombres de quien cubre, de vuelta a una lista.
+ *
+ * Se guardan en una sola columna separados por " · " porque son texto y así
+ * se leen tal cual; la pantalla los vuelve a separar para poder darle a cada
+ * uno su ficha en vez de una línea corrida.
+ */
+function nombresBackup(backup: string | null): string[] {
+  if (!backup) return [];
+  return backup
+    .split("·")
+    .map((n) => n.trim())
+    .filter(Boolean);
+}
+
+/**
  * La disponibilidad, en la frase que la gente lee.
  *
  * La base guarda la clave —NULA, MENSAJES, URGENCIAS, OTRA— porque es lo que
@@ -125,6 +141,7 @@ export function AusenciasScreen({
   equipo = [],
   tipos,
   aprobadores,
+  padron,
   porAprobar,
   puedoAprobar,
 }: {
@@ -161,6 +178,8 @@ export function AusenciasScreen({
   tipos: string[];
   /// Quiénes pueden recibir la solicitud: el "Enviar a" del Gestor.
   aprobadores: { email: string; userName: string; correo?: string | null }[];
+  /// Toda la plantilla, para elegir quién cubre. Sin uno mismo.
+  padron: string[];
   porAprobar: AbsenceView[];
   puedoAprobar: boolean;
 }) {
@@ -1525,17 +1544,29 @@ export function AusenciasScreen({
                                         "1px solid var(--cv-line-soft)",
                                     }}
                                   >
-                                    {e.backup && (
+                                    {nombresBackup(e.backup).length > 0 && (
                                       <span
                                         style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          flexWrap: "wrap",
+                                          gap: 4,
                                           fontSize: 10.5,
                                           color: "var(--cv-ink-3)",
                                         }}
                                       >
-                                        Cubre{" "}
-                                        <b style={{ color: "var(--cv-ink-2)" }}>
-                                          {e.backup}
-                                        </b>
+                                        Cubre
+                                        {nombresBackup(e.backup).map((n) => (
+                                          <b
+                                            key={n}
+                                            style={{
+                                              color: "var(--cv-ink-2)",
+                                              fontWeight: 700,
+                                            }}
+                                          >
+                                            {n}
+                                          </b>
+                                        ))}
                                       </span>
                                     )}
                                     {e.disponibilidad && (
@@ -1973,7 +2004,7 @@ export function AusenciasScreen({
                             >
                               Cubre{" "}
                               <b style={{ color: "var(--cv-ink-2)" }}>
-                                {a.backup}
+                                {nombresBackup(a.backup).join(", ")}
                               </b>
                             </span>
                           )}
@@ -2279,7 +2310,14 @@ export function AusenciasScreen({
                     ruido a un panel que ya tiene siete.
                   */
                   ...(detalle.backup
-                    ? ([["Quién cubre", detalle.backup]] as const)
+                    ? ([
+                        [
+                          nombresBackup(detalle.backup).length === 1
+                            ? "Quién cubre"
+                            : "Quiénes cubren",
+                          nombresBackup(detalle.backup).join(", "),
+                        ],
+                      ] as const)
                     : []),
                   ...(textoDisponibilidad(
                     detalle.availability,
@@ -2415,6 +2453,7 @@ export function AusenciasScreen({
         <FormSolicitud
           tipos={tipos}
           aprobadores={aprobadores}
+          padron={padron}
           disponibles={disponibles}
           onClose={() => setSolicitando(false)}
         />
@@ -2434,11 +2473,14 @@ export function AusenciasScreen({
 function FormSolicitud({
   tipos,
   aprobadores,
+  padron,
   disponibles,
   onClose,
 }: {
   tipos: string[];
   aprobadores: { email: string; userName: string; correo?: string | null }[];
+  /// Toda la plantilla, para elegir quién cubre. Sin uno mismo.
+  padron: string[];
   /** Días de vacaciones que se pueden tomar hoy. */
   disponibles: number;
   onClose: () => void;
@@ -2460,7 +2502,7 @@ function FormSolicitud({
   const [otroRato, setOtroRato] = useState(false);
   const [razon, setRazon] = useState("");
   /** Quién cubre y si se le puede localizar durante la ausencia. */
-  const [backup, setBackup] = useState("");
+  const [backup, setBackup] = useState<string[]>([]);
   const [disponibilidad, setDisponibilidad] = useState("");
   const [enviarA, setEnviarA] = useState("");
   const [pendiente, startTransition] = useTransition();
@@ -3178,20 +3220,28 @@ function FormSolicitud({
             */}
             <div>
               <span style={rotuloCampo}>Quién te cubre</span>
-              <input
+              {/*
+                De la plantilla, no escrito a mano.
+
+                Un campo libre acepta "adolfo", "Adolfo R." y "ADOLFO RAMIREZ"
+                para la misma persona, y luego no hay forma de saber a quién
+                buscar. Se eligen de la lista, uno o varios.
+              */}
+              <CvComboMulti
                 name="backup"
-                value={backup}
-                onChange={(e) => setBackup(e.target.value)}
-                placeholder="Nombre de quien queda a cargo"
-                maxLength={160}
-                style={campo}
+                opciones={padron}
+                valores={backup}
+                onChange={setBackup}
+                placeholder="Busca a quién queda a cargo…"
+                maximo={5}
+                ariaLabel="Quién te cubre"
               />
               <span
                 style={{
                   display: "block",
                   fontSize: 10,
                   color: "var(--cv-ink-4)",
-                  marginTop: 4,
+                  marginTop: 5,
                 }}
               >
                 Puede ser más de una persona. Déjalo vacío si no aplica.

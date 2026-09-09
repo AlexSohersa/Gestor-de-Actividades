@@ -19,6 +19,7 @@ import {
   sincronizarEnSegundoPlano,
 } from "@/lib/google/sincronizar";
 import { exigirSeccion } from "@/modules/identidad/infrastructure/wiring";
+import { padronActivo } from "@/lib/gestor/queries";
 import {
   aFechaDia,
   deFechaDia,
@@ -509,7 +510,30 @@ export async function solicitarAusencia(
    * Van sin obligar: hay ausencias que no dejan trabajo a nadie —media hora
    * de llegada tarde— y exigirlas ahí sería ruido.
    */
-  const backup = String(form.get("backup") ?? "").trim().slice(0, 160) || null;
+
+  /*
+   * Los nombres se comprueban contra la plantilla.
+   *
+   * La pantalla ya solo deja elegir de una lista, pero esto es una acción de
+   * servidor: el formulario que llega puede traer cualquier cosa. Guardar un
+   * nombre que no existe deja una ausencia cubierta por nadie, y no se nota
+   * hasta que alguien necesita a esa persona.
+   *
+   * Se compara en mayúsculas y sin espacios de más porque es como viaja
+   * desde el campo, no porque se espere variación.
+   */
+  const plantilla = await padronActivo();
+  const porNombre = new Map(
+    plantilla.map((c) => [c.nombre.trim().toUpperCase(), c.nombre]),
+  );
+
+  const elegidos = String(form.get("backup") ?? "")
+    .split("·")
+    .map((n) => porNombre.get(n.trim().toUpperCase()))
+    .filter((n): n is string => Boolean(n));
+
+  // Sin repetidos y con un tope, que es lo que ofrece la pantalla.
+  const backup = [...new Set(elegidos)].slice(0, 5).join(" · ") || null;
 
   const dispCruda = String(form.get("availability") ?? "").trim().toUpperCase();
   const disponibilidad = ["NULA", "MENSAJES", "URGENCIAS", "OTRA"].includes(

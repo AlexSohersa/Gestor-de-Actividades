@@ -152,3 +152,28 @@ export async function listaAprobadores(): Promise<
     correo: f.correos[0]?.correo ?? null,
   }));
 }
+
+/**
+ * Todo el mundo activo, para elegir quién cubre una ausencia.
+ *
+ * No es `listaAprobadores`: ahí solo salen coordinadores y dirección, y a
+ * quien te cubre casi nunca es tu jefe —es la persona de al lado que sabe
+ * llevar tus pendientes—. Aquí sale la plantilla entera.
+ *
+ * Se devuelve el nombre de pila que usa cada quien (`nombre_usuario`) cuando
+ * lo hay: es como se conocen entre ellos, y es lo que se teclea al buscar.
+ */
+export async function padronActivo(): Promise<
+  { id: string; nombre: string }[]
+> {
+  const filas = await db.persona.findMany({
+    where: { activo: true },
+    select: { id: true, nombre: true, nombreUsuario: true },
+    orderBy: { nombre: "asc" },
+  });
+
+  return filas.map((f) => ({
+    id: f.id,
+    nombre: f.nombreUsuario ?? f.nombre,
+  }));
+}

@@ -1,7 +1,11 @@
 import { exigirSeccion } from "@/modules/identidad/infrastructure/wiring";
 import { puedeAprobar } from "@/modules/identidad/domain/persona.entity";
 import { db } from "@/lib/db/client";
-import { catalogoAusencias, listaAprobadores } from "@/lib/gestor/queries";
+import {
+  catalogoAusencias,
+  listaAprobadores,
+  padronActivo,
+} from "@/lib/gestor/queries";
 import { loadAusencias, saldoVacaciones } from "@/lib/trabajo/queries";
 import { ausenciasDelEquipo, ventanaDelMes } from "@/lib/trabajo/calendario";
 import { hoyEnMexico } from "@/lib/fechas";
@@ -27,12 +31,15 @@ export default async function AusenciasPage() {
    */
   const [desde, hasta] = ventanaDelMes(hoyEnMexico());
 
-  const [{ lista }, saldo, tipos, aprobadores, pendientes, equipo] =
+  const [{ lista }, saldo, tipos, aprobadores, padron, pendientes, equipo] =
     await Promise.all([
       loadAusencias(persona.id),
       saldoVacaciones(persona.id),
       catalogoAusencias(),
       listaAprobadores(),
+      // Toda la plantilla, para elegir quién cubre: quien te cubre casi nunca
+      // es tu jefe, así que no vale la lista de aprobadores.
+      padronActivo(),
       /*
        * Lo que le toca decidir: las solicitudes que le MANDARON A ÉL.
        *
@@ -86,6 +93,9 @@ export default async function AusenciasPage() {
       equipo={equipo}
       tipos={tipos}
       aprobadores={aprobadores}
+      padron={padron
+        .filter((c) => c.id !== persona.id)
+        .map((c) => c.nombre)}
       porAprobar={pendientes.map((a) => ({
         id: a.id,
         type: a.tipo,
