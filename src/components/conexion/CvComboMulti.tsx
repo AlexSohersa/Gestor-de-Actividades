@@ -43,8 +43,11 @@ export function CvComboMulti({
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
   const [cursor, setCursor] = useState(0);
+  /** Hacia dónde cabe la lista: abajo salvo que no quepa. */
+  const [haciaArriba, setHaciaArriba] = useState(false);
   const cajaRef = useRef<HTMLDivElement>(null);
   const listaRef = useRef<HTMLDivElement>(null);
+  const campoRef = useRef<HTMLDivElement>(null);
 
   const lleno = maximo !== undefined && valores.length >= maximo;
 
@@ -60,24 +63,105 @@ export function CvComboMulti({
     return [...empiezan, ...contienen];
   }, [opciones, texto]);
 
+  const cerrar = () => {
+    setAbierto(false);
+    setTexto("");
+  };
+
   useEffect(() => {
     if (!abierto) return;
+
     const fuera = (e: MouseEvent) => {
-      if (!cajaRef.current?.contains(e.target as Node)) {
-        setAbierto(false);
-        setTexto("");
-      }
+      if (!cajaRef.current?.contains(e.target as Node)) cerrar();
     };
+
+    /*
+      Al desplazar el formulario, la lista se cierra.
+
+      Va anclada al campo, y el panel de la solicitud se desplaza por dentro:
+      sin esto, al bajar para seguir llenando el formulario la lista se
+      quedaba flotando sobre los campos siguientes, tapándolos.
+
+      Pero solo cuenta el desplazamiento DE VERDAD, el que hace la persona.
+      El navegador también desplaza el panel por su cuenta —al enfocar el
+      campo, y otra vez cuando aparece una ficha y todo baja un renglón—, y
+      esos avisos llegaban igual: la lista se cerraba sola en el mismo gesto
+      que la abría, y al elegir el primer nombre. De ahí que se compare
+      contra dónde estaba, en vez de reaccionar al aviso.
+
+      `capture` porque el scroll ocurre en el panel, no en `document`, y no
+      burbujea.
+    */
+    const dondeIba = new WeakMap<EventTarget, number>();
+
+    const alDesplazar = (e: Event) => {
+      const donde = e.target;
+      if (!donde) return;
+
+      // El scroll dentro de la propia lista es buscar un nombre, no salirse.
+      if (listaRef.current?.contains(donde as Node)) return;
+
+      const y =
+        donde === document || donde === window
+          ? window.scrollY
+          : (donde as HTMLElement).scrollTop;
+
+      const antes = dondeIba.get(donde);
+      dondeIba.set(donde, y);
+
+      // La primera vez solo se anota: no hay con qué comparar todavía.
+      if (antes === undefined) return;
+      // Un par de píxeles es el acomodo del navegador; mover es mover.
+      if (Math.abs(y - antes) < 8) return;
+
+      cerrar();
+    };
+
     document.addEventListener("mousedown", fuera);
-    return () => document.removeEventListener("mousedown", fuera);
+    document.addEventListener("scroll", alDesplazar, true);
+    return () => {
+      document.removeEventListener("mousedown", fuera);
+      document.removeEventListener("scroll", alDesplazar, true);
+    };
   }, [abierto]);
 
-  // La opción marcada siempre visible al moverse con el teclado.
+  /*
+   * Si abajo no cabe, se abre hacia arriba.
+   *
+   * El campo suele quedar en la parte baja del panel de la solicitud, y una
+   * lista de 240px anclada debajo tapaba los campos siguientes —incluido el
+   * botón de enviar—. Como además cubría esa zona, los clics para cerrarla
+   * caían dentro de la propia lista y no la cerraban nunca.
+   */
   useEffect(() => {
     if (!abierto) return;
-    listaRef.current
-      ?.querySelector<HTMLElement>(`[data-i="${cursor}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+    const caja = campoRef.current?.getBoundingClientRect();
+    if (!caja) return;
+    const debajo = window.innerHeight - caja.bottom;
+    setHaciaArriba(debajo < ALTO_LISTA + 16 && caja.top > debajo);
+  }, [abierto, valores.length]);
+
+  /*
+   * La opción marcada, siempre visible al moverse con el teclado.
+   *
+   * Se desplaza LA LISTA a mano en vez de usar `scrollIntoView`: ese sube por
+   * todos los ancestros y acababa desplazando el panel entero de la solicitud
+   * —con lo que la lista se cerraba sola al elegir el primer nombre, porque
+   * el formulario se había movido debajo—.
+   */
+  useEffect(() => {
+    if (!abierto) return;
+    const caja = listaRef.current;
+    const fila = caja?.querySelector<HTMLElement>(`[data-i="${cursor}"]`);
+    if (!caja || !fila) return;
+
+    const arriba = fila.offsetTop;
+    const abajo = arriba + fila.offsetHeight;
+
+    if (arriba < caja.scrollTop) caja.scrollTop = arriba;
+    else if (abajo > caja.scrollTop + caja.clientHeight) {
+      caja.scrollTop = abajo - caja.clientHeight;
+    }
   }, [cursor, abierto]);
 
   /*
@@ -183,6 +267,7 @@ export function CvComboMulti({
       )}
 
       <div
+        ref={campoRef}
         style={{
           display: "flex",
           alignItems: "center",
@@ -224,16 +309,37 @@ export function CvComboMulti({
             color: "var(--cv-ink)",
           }}
         />
-        <ChevronDown
-          size={14}
-          aria-hidden="true"
+        {/*
+          La flecha CIERRA, no solo decora.
+
+          Es lo primero que se toca cuando alguien quiere quitarse la lista de
+          encima, y hasta ahora no hacía nada: había que adivinar que se
+          cerraba picando fuera.
+        */}
+        <button
+          type="button"
+          onClick={() => (abierto ? cerrar() : setAbierto(true))}
+          aria-label={abierto ? "Cerrar la lista" : "Abrir la lista"}
+          aria-expanded={abierto}
           style={{
-            color: "var(--cv-ink-4)",
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            lineHeight: 0,
+            cursor: "pointer",
             flexShrink: 0,
-            transform: abierto ? "rotate(180deg)" : "none",
-            transition: "transform .18s ease",
           }}
-        />
+        >
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            style={{
+              color: "var(--cv-ink-4)",
+              transform: abierto ? "rotate(180deg)" : "none",
+              transition: "transform .18s ease",
+            }}
+          />
+        </button>
       </div>
 
       {abierto && (
@@ -244,10 +350,12 @@ export function CvComboMulti({
           aria-multiselectable="true"
           style={{
             position: "absolute",
-            top: "calc(100% + 4px)",
+            ...(haciaArriba
+              ? { bottom: "calc(100% + 4px)" }
+              : { top: "calc(100% + 4px)" }),
             left: 0,
             right: 0,
-            maxHeight: 240,
+            maxHeight: ALTO_LISTA,
             overflowY: "auto",
             background: "#fff",
             border: "1px solid var(--cv-line)",
@@ -313,11 +421,44 @@ export function CvComboMulti({
               );
             })
           )}
+
+          {/*
+            Una salida al alcance del pulgar.
+
+            En el móvil, "pica fuera para cerrar" significa acertarle a un
+            hueco que la propia lista está tapando. Con algo elegido, esto es
+            lo que se busca: ya está, quítate.
+          */}
+          {valores.length > 0 && (
+            <button
+              type="button"
+              onClick={cerrar}
+              style={{
+                ...fila,
+                position: "sticky",
+                bottom: 0,
+                justifyContent: "center",
+                marginTop: 2,
+                background: "#fff",
+                borderTop: "1px solid var(--cv-line-soft)",
+                borderRadius: 0,
+                color: "var(--cv-green-ink)",
+                fontWeight: 700,
+                fontSize: 11.5,
+              }}
+            >
+              Listo · {valores.length}{" "}
+              {valores.length === 1 ? "elegido" : "elegidos"}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 }
+
+/** Lo que mide la lista abierta: hace falta para saber si cabe debajo. */
+const ALTO_LISTA = 240;
 
 const fila: React.CSSProperties = {
   display: "flex",
