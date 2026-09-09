@@ -76,7 +76,17 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
   }, [d.porProyecto, orden]);
 
   const maxProyecto = Math.max(...d.porProyecto.map((p) => p.horas), 1);
+  /*
+   * La escala de la gráfica de meses.
+   *
+   * Medir desde cero no sirve cuando todos los meses rondan las mismas horas:
+   * con valores entre 156 y 184, las ocho barras salían entre el 70% y el 82%
+   * y se veían idénticas. Arrancando algo por debajo del mínimo, la diferencia
+   * entre un mes flojo y uno cargado se nota.
+   */
   const maxMes = Math.max(...d.porMes.map((m) => m.horas), 1);
+  const minMes = Math.min(...d.porMes.map((m) => m.horas), maxMes);
+  const pisoMes = d.porMes.length > 1 ? minMes * 0.9 : 0;
   const totalTipos = d.porTipo.reduce((n, t) => n + t.horas, 0) || 1;
 
   const fmt = (n: number) =>
@@ -777,11 +787,14 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
                   display: "flex",
                   alignItems: "flex-end",
                   gap: 5,
-                  height: 92,
+                  height: 108,
                 }}
               >
                 {d.porMes.map((m, i) => {
-                  const alto = Math.max(4, (m.horas / maxMes) * 100);
+                  const alto = Math.max(
+                    8,
+                    ((m.horas - pisoMes) / Math.max(1, maxMes - pisoMes)) * 100,
+                  );
                   const ultimo = i === d.porMes.length - 1;
                   return (
                     <div
@@ -805,12 +818,28 @@ export function DashboardHoras({ d }: { d: Dashboard }) {
                         height: "100%",
                       }}
                     >
+                      {/*
+                        Las horas, sobre la barra.
+
+                        Sin ellas hay que pasar el ratón por cada mes para
+                        saber cuánto fue, y en el móvil no hay ratón.
+                      */}
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 700,
+                          color: ultimo ? "#178A49" : "var(--cv-ink-4)",
+                          lineHeight: 1,
+                        }}
+                      >
+                        {fmt(m.horas)}
+                      </span>
                       <span
                         style={{
                           width: "100%",
-                          // Se reserva sitio para el rótulo del mes: si la
-                          // barra ocupa el 100%, el nombre se sale de la caja.
-                          height: `${alto * 0.82}%`,
+                          // Se reserva sitio para el rótulo del mes y la cifra
+                          // de arriba: con el 100% se saldrían de la caja.
+                          height: `${alto * 0.74}%`,
                           borderRadius: "5px 5px 2px 2px",
                           background: ultimo
                             ? "linear-gradient(180deg, var(--cv-green), var(--cv-teal))"
