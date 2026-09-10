@@ -12,7 +12,7 @@ import { relativeTime } from "@/lib/portal/time";
 import type { TicketView } from "@/lib/trabajo/queries";
 
 /**
- * Tickets — reporta y da seguimiento sin salir de la plataforma.
+ * Mantenimiento TI — reporta y da seguimiento sin salir de la plataforma.
  *
  * La fila abre un panel lateral con el historial completo; comentar y
  * resolver escriben eventos reales en el ticket.
@@ -57,12 +57,21 @@ export function TicketsScreen({
   tickets,
   fallas,
   atiende = false,
+  resuelve = false,
 }: {
   tickets: TicketView[];
   /// Catálogo de problemas por tipo, del Gestor.
   fallas: { value: string; parent: string }[];
   /// Quien atiende Sistemas ve la bandeja de todos; el resto, solo la suya.
   atiende?: boolean;
+  /*
+   * Y quién puede darlos por resueltos.
+   *
+   * Va aparte de `atiende` porque son dos permisos distintos: a dirección le
+   * sirve seguir el pendiente sin tocarlo. Quien resuelve siempre ve, pero no
+   * al revés.
+   */
+  resuelve?: boolean;
 }) {
   const [filtro, setFiltro] = useState("Todos");
 
@@ -117,7 +126,7 @@ export function TicketsScreen({
               margin: 0,
             }}
           >
-            Tickets
+            Mantenimiento TI
           </h1>
           <p
             style={{
@@ -275,6 +284,19 @@ export function TicketsScreen({
                       marginTop: 1,
                     }}
                   >
+                    {/*
+                      Quién lo reportó, para quien ve la bandeja de todos.
+
+                      En la lista propia sobra —son todos de uno mismo— y
+                      gastaría el ancho que necesita el título. En la de
+                      Sistemas es lo primero que se busca: a quién hay que ir
+                      a ver.
+                    */}
+                    {atiende && (
+                      <b style={{ color: "var(--cv-ink-2)", fontWeight: 700 }}>
+                        {t.createdBy}{" · "}
+                      </b>
+                    )}
                     {t.category} ·{" "}
                     {relativeTime(new Date(t.createdAt).getTime())} · act.{" "}
                     {relativeTime(new Date(t.updatedAt).getTime())}
@@ -321,7 +343,13 @@ export function TicketsScreen({
         </div>
       )}
 
-      {sel && <TicketDrawer t={sel} onClose={() => setAbierto(null)} />}
+      {sel && (
+        <TicketDrawer
+          t={sel}
+          resuelve={resuelve}
+          onClose={() => setAbierto(null)}
+        />
+      )}
       {creando && (
         <FormTicket fallas={fallas} onClose={() => setCreando(false)} />
       )}
@@ -331,7 +359,16 @@ export function TicketsScreen({
 
 /* --------------------------------------------------------------- drawer --- */
 
-function TicketDrawer({ t, onClose }: { t: TicketView; onClose: () => void }) {
+function TicketDrawer({
+  t,
+  resuelve,
+  onClose,
+}: {
+  t: TicketView;
+  /// Si no, el cajón es de solo lectura: se sigue, no se cierra.
+  resuelve: boolean;
+  onClose: () => void;
+}) {
   const [comentario, setComentario] = useState("");
   const [pendiente, startTransition] = useTransition();
 
@@ -446,6 +483,15 @@ function TicketDrawer({ t, onClose }: { t: TicketView; onClose: () => void }) {
               margin: "3px 0 0",
             }}
           >
+            {/*
+              Aquí el autor va siempre, también en la ficha propia.
+
+              Es la ficha del ticket —lo que se lee para saber de qué va— y
+              con el histórico importado de la hoja hay reportes que uno no
+              recuerda haber levantado.
+            */}
+            Reportó <b style={{ color: "var(--cv-ink-2)" }}>{t.createdBy}</b>
+            {" · "}
             {t.category} · prioridad {t.priority}
             {t.assignee ? ` · responsable ${t.assignee}` : ""}
           </p>
@@ -570,7 +616,7 @@ function TicketDrawer({ t, onClose }: { t: TicketView; onClose: () => void }) {
           </div>
         </div>
 
-        {t.status !== "Resuelto" && (
+        {t.status !== "Resuelto" && resuelve && (
           <div
             style={{
               background: "#fff",

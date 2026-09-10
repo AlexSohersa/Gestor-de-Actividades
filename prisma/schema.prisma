@@ -554,6 +554,10 @@ model PersonaRol {
   herramientaClave String   @map("herramienta_clave")
   rolClave         String   @map("rol_clave")
   seccionesOcultas String[] @default([]) @map("secciones_ocultas")
+  /// Ve la bandeja COMPLETA de Mantenimiento TI, no solo sus propios tickets.
+  veMantenimiento  Boolean  @default(false) @map("ve_mantenimiento")
+  /// Puede mover un ticket de estado y darlo por resuelto.
+  resuelveMantenimiento Boolean @default(false) @map("resuelve_mantenimiento")
   asignadoEn       DateTime @default(now()) @map("asignado_en") @db.Timestamptz(6)
   asignadoPor      String?  @map("asignado_por")
 

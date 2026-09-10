@@ -268,6 +268,75 @@ export async function cambiarSecciones(
 }
 
 /**
+ * Quién ve y quién resuelve los tickets de Mantenimiento TI.
+ *
+ * Va aparte de administrar la plataforma a propósito: administrar —papeles,
+ * permisos, secciones— y atender averías son dos trabajos distintos, y
+ * confundirlos hacía que cualquier administrador viera el equipo, el AnyDesk
+ * y la avería que cada quien escribió, sin que nadie lo hubiera decidido.
+ *
+ * Antes esto se declaraba con la variable TICKETS_ATIENDEN en Vercel, y
+ * cambiar quién atiende Sistemas obligaba a volver a desplegar.
+ */
+export async function cambiarMantenimiento(
+  email: string,
+  permisos: { ve: boolean; resuelve: boolean },
+): Promise<ResultadoEquipo> {
+  const quien = await administrador();
+  if (!quien.ok) return { ok: false, error: quien.error };
+
+  /*
+   * Quien resuelve, ve.
+   *
+   * No se puede atender lo que no se ve. La pantalla ya lo arrastra al
+   * marcar, pero se vuelve a imponer aquí: es una acción de servidor y lo que
+   * llegue puede traer cualquier combinación.
+   */
+  const ve = permisos.ve || permisos.resuelve;
+  const resuelve = permisos.resuelve;
+
+  await db.$transaction(async (tx) => {
+    const previo = await tx.personaRol.findUnique({
+      where: {
+        personaId_herramientaClave: {
+          personaId: email,
+          herramientaClave: HERRAMIENTA,
+        },
+      },
+      select: { rolClave: true },
+    });
+
+    await tx.personaRol.upsert({
+      where: {
+        personaId_herramientaClave: {
+          personaId: email,
+          herramientaClave: HERRAMIENTA,
+        },
+      },
+      // Sin fila previa hay que darle un papel para poder guardar el permiso:
+      // COLABORADOR es el mínimo y no concede nada por sí solo.
+      create: {
+        personaId: email,
+        herramientaClave: HERRAMIENTA,
+        rolClave: previo?.rolClave ?? "COLABORADOR",
+        veMantenimiento: ve,
+        resuelveMantenimiento: resuelve,
+        asignadoPor: quien.id,
+      },
+      update: {
+        veMantenimiento: ve,
+        resuelveMantenimiento: resuelve,
+        asignadoPor: quien.id,
+      },
+    });
+  });
+
+  revalidatePath("/equipo");
+  revalidatePath("/tickets");
+  return { ok: true };
+}
+
+/**
  * Quién administra la plataforma.
  *
  * Da acceso a Permisos y ve las cifras de toda la empresa. Antes solo se podía

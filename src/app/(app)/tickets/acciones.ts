@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { exigirSeccion } from "@/modules/identidad/infrastructure/wiring";
-import { veToda } from "@/modules/identidad/domain/persona.entity";
+import { resuelveMantenimiento } from "@/modules/identidad/domain/persona.entity";
+import { atiendeMantenimiento } from "@/lib/trabajo/mantenimiento";
 import {
   cambiarEstadoTicketWired,
   crearTicketWired,
@@ -28,11 +29,22 @@ export async function cambiarEstadoTicket(id: string, estado: Estado) {
 
   const esPropio = await esTicketDeWired(id, persona.id);
 
+  /*
+   * Quien RESUELVE, no quien administra.
+   *
+   * Esto miraba `veToda`, así que cualquier administrador podía cerrar
+   * tickets aunque la bandeja se le concediera por otro lado: la pantalla
+   * decidía con un criterio y esta acción con otro. Ahora las dos preguntan
+   * lo mismo, y es un permiso que se da a mano.
+   */
+  const puedeResolver =
+    resuelveMantenimiento(persona) || atiendeMantenimiento(persona.correo);
+
   const r = await cambiarEstadoTicketWired({
     id,
     estado,
     personaId: persona.id,
-    atiendeMantenimiento: veToda(persona),
+    atiendeMantenimiento: puedeResolver,
     esPropio,
   });
 

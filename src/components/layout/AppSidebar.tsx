@@ -41,7 +41,12 @@ const MENU: Grupo[] = [
     entradas: [
       { seccion: "actividad", etiqueta: "Actividad", href: "/actividad", icono: Clock },
       { seccion: "ausencias", etiqueta: "Ausencias", href: "/ausencias", icono: CalendarDays },
-      { seccion: "tickets", etiqueta: "Tickets", href: "/tickets", icono: LifeBuoy },
+      {
+        seccion: "tickets",
+        etiqueta: "Mantenimiento TI",
+        href: "/tickets",
+        icono: LifeBuoy,
+      },
     ],
   },
   {

@@ -75,10 +75,10 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "tickets",
-    label: "Tickets",
+    label: "Mantenimiento TI",
     href: "/tickets",
-    title: "Tickets de mantenimiento",
-    description: "Reporta y da seguimiento a solicitudes internas",
+    title: "Mantenimiento TI",
+    description: "Reporta y da seguimiento a fallas de equipo y sistemas",
     status: "live",
     accent: "var(--cv-sea)",
     group: "Tu trabajo",

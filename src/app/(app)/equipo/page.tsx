@@ -26,7 +26,12 @@ export default async function EquipoPage() {
       correos: { where: { principal: true }, select: { correo: true }, take: 1 },
       roles: {
         where: { herramientaClave: HERRAMIENTA },
-        select: { rolClave: true, seccionesOcultas: true },
+        select: {
+          rolClave: true,
+          seccionesOcultas: true,
+          veMantenimiento: true,
+          resuelveMantenimiento: true,
+        },
         take: 1,
       },
     },
@@ -50,6 +55,10 @@ export default async function EquipoPage() {
         active: f.activo,
         isAdmin: f.esAdmin,
         hiddenSections: f.roles[0]?.seccionesOcultas ?? [],
+        // Sin fila de permisos: solo ve sus propios tickets. El lado seguro
+        // por el que equivocarse es una bandeja sin atender, no una fuga.
+        seesMaintenance: f.roles[0]?.veMantenimiento ?? false,
+        solvesMaintenance: f.roles[0]?.resuelveMantenimiento ?? false,
         photo: f.foto,
       }))}
       yo={persona.id}

@@ -75,6 +75,19 @@ export interface Persona {
   rol: Rol;
   /// Secciones que esta persona no debe ver.
   seccionesOcultas: Seccion[];
+
+  /*
+   * Mantenimiento TI, en dos permisos y no en uno.
+   *
+   * Ver la bandeja completa y poder cerrar tickets son cosas distintas: a
+   * dirección le sirve seguir el pendiente sin tocarlo, y quien atiende
+   * necesita las dos. Separarlos no cuesta nada y evita repartir la capacidad
+   * de cerrar solo para dejar mirar.
+   */
+  /// Ve los tickets de TODOS, no solo los suyos.
+  veMantenimiento: boolean;
+  /// Puede mover un ticket de estado y darlo por resuelto.
+  resuelveMantenimiento: boolean;
 }
 
 /// Quién aprueba ausencias y horas extra. Tener el papel no basta: además la
@@ -95,6 +108,29 @@ export function veSeccion(
   seccion: Seccion,
 ): boolean {
   return !p.seccionesOcultas.includes(seccion);
+}
+
+/**
+ * Quién ve la bandeja COMPLETA de Mantenimiento TI.
+ *
+ * Un ticket lleva el equipo, el AnyDesk y lo que la persona escribió de su
+ * avería: no es asunto del resto de la oficina. Por eso va por permiso
+ * explícito y no por papel —ser administrador de la plataforma y atender
+ * averías son dos trabajos distintos—.
+ *
+ * Quien puede RESOLVER ve por necesidad: no se puede atender lo que no se ve.
+ */
+export function veMantenimiento(
+  p: Pick<Persona, "veMantenimiento" | "resuelveMantenimiento">,
+): boolean {
+  return p.veMantenimiento || p.resuelveMantenimiento;
+}
+
+/// Quién puede mover un ticket de estado y darlo por resuelto.
+export function resuelveMantenimiento(
+  p: Pick<Persona, "resuelveMantenimiento">,
+): boolean {
+  return p.resuelveMantenimiento;
 }
 
 /// Normaliza un correo para buscarlo. La base guarda todo en minúsculas y

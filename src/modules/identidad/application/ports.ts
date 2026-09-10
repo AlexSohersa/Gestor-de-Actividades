@@ -24,6 +24,10 @@ export interface CambioPermiso {
   /// Las secciones que SÍ debe ver. El repositorio guarda el complemento, para
   /// que una sección nueva la vea todo el mundo por omisión.
   seccionesVisibles?: Seccion[];
+  /// Ve la bandeja completa de Mantenimiento TI.
+  veMantenimiento?: boolean;
+  /// Puede darlos por resueltos.
+  resuelveMantenimiento?: boolean;
 }
 
 export interface PersonaRepository {

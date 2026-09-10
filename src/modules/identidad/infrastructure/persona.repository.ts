@@ -33,7 +33,12 @@ const SELECCION = {
   correos: { where: { principal: true }, select: { correo: true }, take: 1 },
   roles: {
     where: { herramientaClave: HERRAMIENTA },
-    select: { rolClave: true, seccionesOcultas: true },
+    select: {
+      rolClave: true,
+      seccionesOcultas: true,
+      veMantenimiento: true,
+      resuelveMantenimiento: true,
+    },
     take: 1,
   },
 } as const;
@@ -52,7 +57,12 @@ type FilaPersona = {
   activo: boolean;
   esAdmin: boolean;
   correos: { correo: string }[];
-  roles: { rolClave: string; seccionesOcultas: string[] }[];
+  roles: {
+    rolClave: string;
+    seccionesOcultas: string[];
+    veMantenimiento: boolean;
+    resuelveMantenimiento: boolean;
+  }[];
 };
 
 /// Filtra a los valores que el dominio reconoce: la base guarda texto libre y
@@ -88,6 +98,10 @@ function aDominio(f: FilaPersona): Persona {
     correo: f.correos[0]?.correo ?? null,
     rol: (asignacion?.rolClave as Rol) ?? "COLABORADOR",
     seccionesOcultas: soloSecciones(asignacion?.seccionesOcultas ?? []),
+    // Sin fila de permisos todavía: no ve los tickets ajenos. El lado seguro
+    // por el que equivocarse es una bandeja sin atender, no una fuga.
+    veMantenimiento: asignacion?.veMantenimiento ?? false,
+    resuelveMantenimiento: asignacion?.resuelveMantenimiento ?? false,
   };
 }
 
@@ -202,8 +216,14 @@ export const prismaPersonaRepository: PersonaRepository = {
         });
       }
 
-      // Lo que vive en core.persona_rol (papel y secciones EN ESTA herramienta).
-      if (cambio.rol !== undefined || cambio.seccionesVisibles !== undefined) {
+      // Lo que vive en core.persona_rol (papel, secciones y permisos de
+      // mantenimiento EN ESTA herramienta).
+      if (
+        cambio.rol !== undefined ||
+        cambio.seccionesVisibles !== undefined ||
+        cambio.veMantenimiento !== undefined ||
+        cambio.resuelveMantenimiento !== undefined
+      ) {
         // Se guarda el COMPLEMENTO de lo visible: así una sección que se agregue
         // mañana la ve todo el mundo por omisión, sin tener que tocar 53 filas.
         const ocultas =
@@ -223,11 +243,19 @@ export const prismaPersonaRepository: PersonaRepository = {
             herramientaClave: HERRAMIENTA,
             rolClave: cambio.rol ?? "COLABORADOR",
             seccionesOcultas: ocultas ?? [],
+            veMantenimiento: cambio.veMantenimiento ?? false,
+            resuelveMantenimiento: cambio.resuelveMantenimiento ?? false,
             asignadoPor: hechoPor,
           },
           update: {
             ...(cambio.rol !== undefined ? { rolClave: cambio.rol } : {}),
             ...(ocultas !== undefined ? { seccionesOcultas: ocultas } : {}),
+            ...(cambio.veMantenimiento !== undefined
+              ? { veMantenimiento: cambio.veMantenimiento }
+              : {}),
+            ...(cambio.resuelveMantenimiento !== undefined
+              ? { resuelveMantenimiento: cambio.resuelveMantenimiento }
+              : {}),
             asignadoPor: hechoPor,
           },
         });

@@ -2,12 +2,21 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Search, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
+import {
+  Check,
+  Eye,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Wrench,
+  X,
+} from "lucide-react";
 
 import {
   cambiarActivo,
   cambiarAdmin,
   cambiarAprobador,
+  cambiarMantenimiento,
   cambiarRol,
   cambiarSecciones,
 } from "@/lib/gestor/equipo";
@@ -41,6 +50,10 @@ export type MiembroVista = {
   isAdmin: boolean;
   /** Secciones que NO ve. Vacío significa que ve todo. */
   hiddenSections: string[];
+  /** Ve la bandeja COMPLETA de Mantenimiento TI, no solo sus tickets. */
+  seesMaintenance: boolean;
+  /** Puede mover un ticket de estado y darlo por resuelto. */
+  solvesMaintenance: boolean;
   photo: string | null;
 };
 
@@ -576,6 +589,9 @@ function ModalAcceso({
     OCULTABLES.filter((s) => !m.hiddenSections.includes(s.id)).map((s) => s.id),
   );
   const [admin, setAdmin] = useState(m.isAdmin);
+  /** Los dos permisos de Mantenimiento TI. */
+  const [veTickets, setVeTickets] = useState(m.seesMaintenance);
+  const [resuelveTickets, setResuelveTickets] = useState(m.solvesMaintenance);
   const [error, setError] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
 
@@ -593,6 +609,20 @@ function ModalAcceso({
         const r = await cambiarAdmin(m.email, admin);
         if (!r.ok) {
           setError(r.error ?? "No se pudo cambiar la administración.");
+          router.refresh();
+          return;
+        }
+      }
+      if (
+        veTickets !== m.seesMaintenance ||
+        resuelveTickets !== m.solvesMaintenance
+      ) {
+        const r = await cambiarMantenimiento(m.email, {
+          ve: veTickets,
+          resuelve: resuelveTickets,
+        });
+        if (!r.ok) {
+          setError(r.error ?? "No se pudo cambiar Mantenimiento TI.");
           router.refresh();
           return;
         }
@@ -757,6 +787,132 @@ function ModalAcceso({
             </span>
             <Interruptor on={admin} />
           </button>
+
+          {/* ------------------------------------------- mantenimiento TI -- */}
+          {/*
+            Van aparte de administrar, y son dos y no uno.
+
+            Un ticket lleva el equipo, el AnyDesk y lo que la persona escribió
+            de su avería: no es asunto del resto de la oficina. Y administrar
+            la plataforma no es atender averías —antes cualquier administrador
+            veía las incidencias de todo el mundo sin que nadie lo hubiera
+            decidido—.
+          */}
+          <span
+            className="soh-display"
+            style={{
+              display: "block",
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: "var(--cv-ink)",
+              marginBottom: 7,
+            }}
+          >
+            Mantenimiento TI
+          </span>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 7,
+              marginBottom: 18,
+            }}
+          >
+            {(
+              [
+                {
+                  clave: "ve",
+                  on: veTickets,
+                  icono: Eye,
+                  titulo: "Ve los tickets de todos",
+                  pie: "La bandeja completa, no solo los suyos.",
+                },
+                {
+                  clave: "resuelve",
+                  on: resuelveTickets,
+                  icono: Wrench,
+                  titulo: "Puede resolverlos",
+                  pie: "Atiende Sistemas: mueve el estado y los cierra.",
+                },
+              ] as const
+            ).map((f) => {
+              const Icono = f.icono;
+              return (
+                <button
+                  key={f.clave}
+                  type="button"
+                  role="switch"
+                  aria-checked={f.on}
+                  onClick={() => {
+                    if (f.clave === "ve") {
+                      setVeTickets((v) => !v);
+                      return;
+                    }
+                    /*
+                      Quien resuelve, ve.
+
+                      No se puede atender lo que no se ve, así que marcar
+                      "resolver" arrastra "ver": dejarlos marcar por separado
+                      solo permitiría guardar un permiso que no sirve.
+                    */
+                    setResuelveTickets((v) => {
+                      if (!v) setVeTickets(true);
+                      return !v;
+                    });
+                  }}
+                  disabled={pendiente}
+                  className="cv-btn"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    width: "100%",
+                    textAlign: "left",
+                    border: `1px solid ${
+                      f.on ? "#A8DCC0" : "var(--cv-line-soft)"
+                    }`,
+                    background: f.on ? "#E9F8EF" : "#fff",
+                    borderRadius: 13,
+                    padding: "11px 14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Icono
+                    size={16}
+                    style={{
+                      color: f.on ? "#178A49" : "var(--cv-ink-4)",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        color: "var(--cv-ink)",
+                      }}
+                    >
+                      {f.titulo}
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 10.5,
+                        color: "var(--cv-ink-4)",
+                        marginTop: 2,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {f.pie}
+                    </span>
+                  </span>
+                  <Interruptor on={f.on} />
+                </button>
+              );
+            })}
+          </div>
 
           {/* -------------------------------------------------- secciones -- */}
           <span
