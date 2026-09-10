@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db/client";
 import { exigirPersona } from "@/modules/identidad/infrastructure/wiring";
-import { veToda } from "@/modules/identidad/domain/persona.entity";
+import {
+  resuelveMantenimiento,
+  veMantenimiento,
+} from "@/modules/identidad/domain/persona.entity";
+import { atiendeMantenimiento } from "@/lib/trabajo/mantenimiento";
 import { PANTALLA_A_ESTADO } from "./queries";
 import { sincronizarEnSegundoPlano } from "@/lib/google/sincronizar";
 import { crearCasoDynamics, dynamicsConfigurado } from "@/lib/dynamics/casos";
@@ -248,9 +252,18 @@ export async function comentarTicket(
   });
   if (!ticket) return { ok: false, error: "Ese ticket ya no existe." };
 
-  // Comenta quien lo levantó y quien atiende el mantenimiento; nadie más tiene
-  // por qué escribir en una incidencia ajena.
-  if (ticket.personaId !== persona.id && !veToda(persona)) {
+  /*
+   * Comenta quien lo levantó y quien atiende el mantenimiento; nadie más
+   * tiene por qué escribir en una incidencia ajena.
+   *
+   * Preguntaba por `veToda`, así que cualquier administrador podía escribir
+   * en el ticket de cualquiera aunque la bandeja se conceda por otro lado.
+   * Ahora es el mismo permiso con el que se ve.
+   */
+  const veTickets =
+    veMantenimiento(persona) || atiendeMantenimiento(persona.correo);
+
+  if (ticket.personaId !== persona.id && !veTickets) {
     return { ok: false, error: "Ese ticket no es tuyo." };
   }
 
@@ -300,7 +313,16 @@ export async function resolverTicket(
     return { ok: false, error: "El ticket ya estaba así." };
   }
 
-  const atiende = veToda(persona);
+  /*
+   * Quien RESUELVE, no quien administra.
+   *
+   * Esto miraba `veToda`: cualquier administrador podía mover el estado de
+   * cualquier ticket, aunque la bandeja se conceda con los permisos de
+   * Mantenimiento TI. La pantalla decidía con un criterio y esta acción con
+   * otro; ahora las dos preguntan lo mismo.
+   */
+  const atiende =
+    resuelveMantenimiento(persona) || atiendeMantenimiento(persona.correo);
   const esPropio = ticket.personaId === persona.id;
 
   if (!atiende && !esPropio) {

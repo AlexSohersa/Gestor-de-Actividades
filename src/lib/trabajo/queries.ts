@@ -354,6 +354,8 @@ export type TicketView = {
   assignee: string | null;
   createdAt: string;
   updatedAt: string;
+  /// Cuándo se dio por resuelto. Null mientras siga abierto.
+  closedAt: string | null;
   events: { id: string; text: string; author: string; createdAt: string }[];
 };
 
@@ -406,6 +408,7 @@ export const loadTickets = cache(async function loadTickets(
       equipo: true,
       creadoEn: true,
       actualizadoEn: true,
+      cerradoEn: true,
       persona: { select: { nombre: true } },
       atendida: { select: { nombre: true } },
       eventos: {
@@ -434,6 +437,7 @@ export const loadTickets = cache(async function loadTickets(
     assignee: t.atendida?.nombre ?? null,
     createdAt: t.creadoEn.toISOString(),
     updatedAt: t.actualizadoEn.toISOString(),
+    closedAt: t.cerradoEn?.toISOString() ?? null,
     events: t.eventos.map((e) => ({
       id: e.id,
       text: e.texto,

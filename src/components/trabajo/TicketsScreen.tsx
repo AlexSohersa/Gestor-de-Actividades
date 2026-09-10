@@ -297,9 +297,18 @@ export function TicketsScreen({
                         {t.createdBy}{" · "}
                       </b>
                     )}
-                    {t.category} ·{" "}
-                    {relativeTime(new Date(t.createdAt).getTime())} · act.{" "}
-                    {relativeTime(new Date(t.updatedAt).getTime())}
+                    {/*
+                      Cuándo se reportó, y nada más.
+
+                      Antes iba también "act. hace 3 días", que no decía QUÉ
+                      se actualizó —y en el histórico importado de la hoja era
+                      la fecha de la importación, no un movimiento real: 16
+                      tickets ya resueltos anunciando actividad que nunca
+                      hubo—. Lo que se mueve en un ticket se lee en su
+                      bitácora, que está dentro y con nombre y hora.
+                    */}
+                    {t.category} · reportado{" "}
+                    {relativeTime(new Date(t.createdAt).getTime())}
                   </span>
                 </span>
                 <span
@@ -616,7 +625,19 @@ function TicketDrawer({
           </div>
         </div>
 
-        {t.status !== "Resuelto" && resuelve && (
+        {/*
+          El circuito completo, no solo el final.
+
+          Había un único botón que saltaba de "En revisión" a "Resuelto", y
+          "En proceso" existía como filtro y como color sin que nadie pudiera
+          llegar a él: un estado inalcanzable y un filtro que nunca devolvía
+          nada. Quien atiende puede tomarlo primero —así el que reportó ve que
+          ya alguien lo está viendo— y cerrarlo después.
+
+          Reabrir hace falta cuando la avería vuelve: sin eso hay que levantar
+          un ticket nuevo y se pierde el historial de lo que ya se intentó.
+        */}
+        {resuelve && (
           <div
             style={{
               background: "#fff",
@@ -626,28 +647,124 @@ function TicketDrawer({
               gap: 9,
             }}
           >
-            <button
-              type="button"
-              onClick={() =>
-                startTransition(() => {
-                  void resolverTicket(t.id);
-                })
-              }
-              disabled={pendiente}
-              className="cv-btn"
-              style={{
-                flex: 1,
-                border: "none",
-                background: "var(--cv-green-ink)",
-                color: "#fff",
-                fontSize: 12,
-                fontWeight: 700,
-                padding: 10,
-                borderRadius: 11,
-              }}
-            >
-              Marcar como resuelto
-            </button>
+            {t.status === "En revisión" && (
+              <button
+                type="button"
+                onClick={() =>
+                  startTransition(() => {
+                    void resolverTicket(t.id, "En proceso");
+                  })
+                }
+                disabled={pendiente}
+                className="cv-btn"
+                style={{
+                  flex: 1,
+                  border: "1px solid var(--cv-line)",
+                  background: "#fff",
+                  color: "var(--cv-ink-2)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: 10,
+                  borderRadius: 11,
+                }}
+              >
+                Lo estoy atendiendo
+              </button>
+            )}
+
+            {t.status !== "Resuelto" ? (
+              <button
+                type="button"
+                onClick={() =>
+                  startTransition(() => {
+                    void resolverTicket(t.id);
+                  })
+                }
+                disabled={pendiente}
+                className="cv-btn"
+                style={{
+                  flex: 1,
+                  border: "none",
+                  background: "var(--cv-green-ink)",
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: 10,
+                  borderRadius: 11,
+                }}
+              >
+                Marcar como resuelto
+              </button>
+            ) : (
+              <>
+                {/*
+                  Que se vea que alguien ya le picó.
+
+                  Un resuelto sin más deja la duda de si se cerró solo. Con
+                  quién lo cerró y cuándo, se sabe que hubo un botón, que
+                  alguien lo tocó, y a quién preguntarle si la avería vuelve.
+                */}
+                <span
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 7,
+                    border: "1px solid #A8DCC0",
+                    background: "#E9F8EF",
+                    borderRadius: 11,
+                    padding: "9px 10px",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color: "#178A49",
+                    textAlign: "center",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <Check size={14} style={{ flexShrink: 0 }} />
+                  <span>
+                    Resuelto
+                    {t.assignee ? ` por ${t.assignee}` : ""}
+                    {t.closedAt && (
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "#2F7D53",
+                        }}
+                      >
+                        {relativeTime(new Date(t.closedAt).getTime())}
+                      </span>
+                    )}
+                  </span>
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    startTransition(() => {
+                      void resolverTicket(t.id, "En revisión");
+                    })
+                  }
+                  disabled={pendiente}
+                  className="cv-btn"
+                  style={{
+                    border: "1px solid var(--cv-line)",
+                    background: "#fff",
+                    color: "var(--cv-ink-2)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "10px 14px",
+                    borderRadius: 11,
+                    flexShrink: 0,
+                  }}
+                >
+                  Volver a abrir
+                </button>
+              </>
+            )}
           </div>
         )}
       </aside>
