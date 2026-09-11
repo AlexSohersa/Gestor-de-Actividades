@@ -20,6 +20,7 @@ import {
 } from "@/lib/google/sincronizar";
 import { exigirSeccion } from "@/modules/identidad/infrastructure/wiring";
 import { padronActivo } from "@/lib/gestor/queries";
+import { exigeCobertura } from "@/lib/trabajo/cobertura";
 import {
   aFechaDia,
   deFechaDia,
@@ -507,8 +508,12 @@ export async function solicitarAusencia(
   /*
    * Quién cubre y si se le puede localizar.
    *
-   * Van sin obligar: hay ausencias que no dejan trabajo a nadie —media hora
-   * de llegada tarde— y exigirlas ahí sería ruido.
+   * Obligatorias en todo lo que sea una ausencia de verdad. Empezaron siendo
+   * opcionales, y el resultado fue que casi nadie las llenaba: justo cuando
+   * alguien falta es cuando el equipo necesita saber a quién escribirle.
+   *
+   * La excepción es home office, donde se trabaja la jornada completa y no
+   * hay a quién cubrir.
    */
 
   /*
@@ -559,6 +564,22 @@ export async function solicitarAusencia(
    */
   if (disponibilidad === "OTRA" && !disponibilidadNota) {
     return { ok: false, error: "Escribe cómo pueden localizarte." };
+  }
+
+  /*
+   * La misma regla que aplica la pantalla, otra vez aquí.
+   *
+   * El formulario ya no deja enviar sin ellas, pero esto es una acción de
+   * servidor: lo que llega puede venir de cualquier sitio. Las dos preguntan
+   * a `exigeCobertura`, así que no se pueden separar.
+   */
+  if (exigeCobertura(tipo)) {
+    if (!backup) {
+      return { ok: false, error: "Elige quién te cubre." };
+    }
+    if (!disponibilidad) {
+      return { ok: false, error: "Indica tu disponibilidad." };
+    }
   }
 
   if (!tipo) return { ok: false, error: "Elige un tipo de ausencia." };

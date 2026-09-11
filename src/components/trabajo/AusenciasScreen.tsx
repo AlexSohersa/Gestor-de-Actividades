@@ -19,6 +19,7 @@ import type { AbsenceView } from "@/lib/trabajo/queries";
 import type { SaldoVacaciones } from "@/lib/gestor/queries";
 import { CvPortal } from "@/components/conexion/CvPortal";
 import { CvComboMulti } from "@/components/conexion/CvComboMulti";
+import { exigeCobertura } from "@/lib/trabajo/cobertura";
 import { ausenciasDelMes } from "@/lib/trabajo/acciones-calendario";
 
 /**
@@ -2504,6 +2505,8 @@ function FormSolicitud({
   /** Quién cubre y si se le puede localizar durante la ausencia. */
   const [backup, setBackup] = useState<string[]>([]);
   const [disponibilidad, setDisponibilidad] = useState("");
+  /// La explicación de "Otra": sin ella, la clave sola no dice nada.
+  const [notaDisp, setNotaDisp] = useState("");
   const [enviarA, setEnviarA] = useState("");
   const [pendiente, startTransition] = useTransition();
 
@@ -2556,7 +2559,25 @@ function FormSolicitud({
   const totalHoras = dias * horas;
   const excede = consume && dias > disponibles;
   const razonOk = razon.trim().length >= 10;
-  const listo = dias > 0 && razonOk && !!enviarA && !excede;
+
+  /*
+   * Quién cubre y la disponibilidad: obligatorias salvo en home office.
+   *
+   * Quien pide una ausencia no está ni presente ni en línea, y el equipo se
+   * entera cuando ya necesita algo. Dejarlas opcionales hacía que casi nadie
+   * las llenara, que es justo cuando más falta hacen.
+   *
+   * Home office queda fuera: ahí se trabaja la jornada completa y se está
+   * localizable como cualquier día.
+   */
+  const pideCobertura = exigeCobertura(tipo);
+  const backupOk = !pideCobertura || backup.length > 0;
+  const dispOk =
+    !pideCobertura ||
+    (!!disponibilidad && (disponibilidad !== "OTRA" || notaDisp.trim() !== ""));
+
+  const listo =
+    dias > 0 && razonOk && !!enviarA && !excede && backupOk && dispOk;
 
   const motivo = !inicio
     ? "Elige la fecha de inicio"
@@ -2566,9 +2587,15 @@ function FormSolicitud({
         ? `Excedes tus ${disponibles} días disponibles`
         : !razonOk
           ? "Escribe el motivo (mínimo 10 caracteres)"
-          : !enviarA
-            ? "Elige a quién se le envía"
-            : null;
+          : !backupOk
+            ? "Elige quién te cubre"
+            : !dispOk
+              ? disponibilidad === "OTRA"
+                ? "Escribe cómo pueden localizarte"
+                : "Indica tu disponibilidad"
+              : !enviarA
+                ? "Elige a quién se le envía"
+                : null;
 
   /*
    * Se envía con `onSubmit`, no con `action={...}`.
@@ -3219,7 +3246,17 @@ function FormSolicitud({
               cuando alguien falta.
             */}
             <div>
-              <span style={rotuloCampo}>Quién te cubre</span>
+              <span style={rotuloCampo}>
+                Quién te cubre
+                {/*
+                  El asterisco solo cuando de verdad hace falta.
+
+                  En home office estos dos campos siguen ahí por si alguien
+                  quiere dejar dicho algo, pero no se exigen: se trabaja la
+                  jornada entera y se está localizable como cualquier día.
+                */}
+                {pideCobertura && <b style={obligatorio}> *</b>}
+              </span>
               {/*
                 De la plantilla, no escrito a mano.
 
@@ -3244,12 +3281,17 @@ function FormSolicitud({
                   marginTop: 5,
                 }}
               >
-                Puede ser más de una persona. Déjalo vacío si no aplica.
+                {pideCobertura
+                  ? "Puede ser más de una persona. Es quien atiende tus pendientes mientras no estás."
+                  : "Opcional en home office: sigues trabajando tu jornada."}
               </span>
             </div>
 
             <div>
-              <span style={rotuloCampo}>Tu disponibilidad</span>
+              <span style={rotuloCampo}>
+                Tu disponibilidad
+                {pideCobertura && <b style={obligatorio}> *</b>}
+              </span>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {(
                   [
@@ -3288,6 +3330,8 @@ function FormSolicitud({
               {disponibilidad === "OTRA" && (
                 <input
                   name="availabilityNote"
+                  value={notaDisp}
+                  onChange={(e) => setNotaDisp(e.target.value)}
                   autoFocus
                   maxLength={120}
                   placeholder="¿Cómo pueden localizarte?"
@@ -3515,6 +3559,9 @@ function FormSolicitud({
 }
 
 /** Campo de texto o fecha dentro del cajón. */
+/** El asterisco de campo obligatorio, del mismo rojo que los errores. */
+const obligatorio: React.CSSProperties = { color: "#B23A40", fontWeight: 700 };
+
 const campo: React.CSSProperties = {
   width: "100%",
   padding: "8px 10px",
