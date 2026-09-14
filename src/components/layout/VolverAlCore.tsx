@@ -7,10 +7,13 @@ import { Home } from "lucide-react";
  * rato tiene que retroceder paso por paso o escribir la dirección a mano: el
  * botón de atrás del navegador deshace la navegación, no lleva al principio.
  *
- * Va en la barra superior, a la izquierda, donde se busca la salida —el mismo
- * sitio en las seis herramientas—. Discreto pero con su nombre escrito: un
- * icono suelto obliga a adivinar, y en pantalla estrecha se queda solo el
- * icono, que ahí ya se entiende por su posición.
+ * Va en la barra superior, a la DERECHA, como primero del grupo que cierra:
+ * salida al Core, avisos, tu perfil, cerrar sesión. El mismo sitio en todas
+ * las herramientas, para encontrarlo sin buscarlo al cambiar de una a otra.
+ *
+ * Discreto pero con su nombre escrito: un icono suelto obliga a adivinar, y en
+ * pantalla estrecha se queda solo el icono, que ahí ya se entiende por su
+ * posición.
  *
  * Es un enlace normal y no un botón: se puede abrir en otra pestaña con el
  * clic central o el menú del navegador, como cualquiera espera de algo que
