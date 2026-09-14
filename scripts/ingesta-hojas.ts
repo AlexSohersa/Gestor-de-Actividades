@@ -565,11 +565,18 @@ async function ingestarAusencias(padron: Padron) {
       tipo: tipo.toUpperCase(),
       horas,
       motivo: aTexto(f[4]),
-      // La hoja marcaba "PAGADO"/"APROBADO"/"SÍ" según quién lo escribiera.
-      // Solo "NO AUTORIZADO" niega; lo demás son formas de decir que sí.
+      /*
+       * La hoja marcaba "PAGADO"/"APROBADO"/"SÍ" según quién lo escribiera.
+       *
+       * Y niega de tres formas: "NO AUTORIZADO", "RECHAZADO" y "NEGADO", que
+       * es la más común —cuarenta filas—. Se listan las tres porque la
+       * negativa tiene que ser explícita: lo que no se reconoce como un sí
+       * tampoco entra, pero una negativa mal leída sí importaría unos días
+       * que nadie concedió.
+       */
       aprobada:
         /PAGAD|APROBAD|AUTORIZAD|S[IÍ]|TRUE/.test(autorizado) &&
-        !/NO AUTORIZAD|RECHAZAD/.test(autorizado),
+        !/NO AUTORIZAD|RECHAZAD|NEGAD/.test(autorizado),
       periodo: aNumero(f[8]),
     });
   }
@@ -649,7 +656,26 @@ async function ingestarAusencias(padron: Padron) {
 
   t.ok(`${dias.length} días agrupados en ${bloques.length} ausencias`);
 
-  const registros = bloques.map((b) => {
+  /*
+   * SOLO LO QUE SE APROBÓ.
+   *
+   * La hoja guarda también lo negado y lo que nadie llegó a decidir. Antes
+   * entraba todo: lo negado y lo caducado se marcaban como CADUCADA y se
+   * quedaban en el historial de cada quien, donde no dicen nada —unos días
+   * que no se tomaron— y ensucian el calendario del equipo con ausencias que
+   * nunca ocurrieron.
+   *
+   * Lo que sí ocurrió es lo aprobado. El registro de lo que se pidió y se
+   * negó vive en la hoja, que es donde se decidió.
+   */
+  const negados = bloques.filter((b) => !b.aprobada).length;
+  if (negados > 0) {
+    t.dato(`${negados} no se aprobaron: no se importan`);
+  }
+
+  const registros = bloques
+    .filter((b) => b.aprobada)
+    .map((b) => {
     const jornada = padron.jornadaPorPersona.get(b.personaId) ?? 8;
     const esDiaCompleto = b.horas === null || b.horas >= jornada;
 
@@ -667,18 +693,8 @@ async function ingestarAusencias(padron: Padron) {
       medioDia: !esDiaCompleto,
       horas: esDiaCompleto ? null : b.horas,
       motivo: b.motivo,
-      /*
-       * Sin decidir y con la fecha ya pasada: CADUCADA, no pendiente.
-       *
-       * La hoja tiene solicitudes de 2024 que nadie resolvió. Traerlas como
-       * pendientes las pone a pedir aprobación años después, y no hay nada
-       * que decidir sobre unos días que ya transcurrieron.
-       */
-      estado: b.aprobada
-        ? "APROBADA"
-        : b.fin < new Date().toISOString().slice(0, 10)
-          ? "CADUCADA"
-          : "PENDIENTE",
+      // Solo llegan aquí las aprobadas: el filtro de arriba descarta el resto.
+      estado: "APROBADA",
       periodo: b.periodo === null ? null : Math.round(b.periodo),
       // YA ESTÁN EN LA HOJA: sin esto la sincronización las devolvería y la
       // duplicaría. Es el mismo motivo por el que las horas nacen con "hoja".
