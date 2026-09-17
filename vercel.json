@@ -7,7 +7,7 @@
   "crons": [
     {
       "path": "/api/cron/reporte-semanal",
-      "schedule": "30 14 * * 1"
+      "schedule": "0 15 * * 1"
     }
   ]
 }
