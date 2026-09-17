@@ -4,26 +4,31 @@ import {
   proyectosConHoras,
   radarDeProyecto,
 } from "@/lib/proyectos/radar";
+import { reporteSemanal } from "@/lib/proyectos/semanal";
 import { RadarScreen } from "@/components/proyectos/RadarScreen";
+import { SemanalScreen } from "@/components/proyectos/SemanalScreen";
+import { PestanasProyectos } from "@/components/proyectos/PestanasProyectos";
 
 // Un minuto de caché: el radar mira meses de horas y no cambia de un segundo a
 // otro. Es la única pantalla que se puede permitir servirse tibia.
 export const revalidate = 60;
 
 /**
- * Estatus de proyectos — la "Reunión de radar".
+ * Estatus de proyectos — dos vistas de lo mismo.
  *
- * Cruza lo cotizado con lo registrado para responder la pregunta de la
- * reunión: en qué entregable se están yendo las horas, y si alcanzan.
+ * "Radar" cruza lo cotizado con lo registrado para responder la pregunta de la
+ * reunión: en qué entregable se están yendo las horas, y si alcanzan. Con
+ * varios proyectos elegidos cambia de pregunta y compara el grupo.
  *
- * Con VARIOS proyectos elegidos cambia de pregunta: ya no es "cómo va este"
- * sino "cómo vamos con estos", y entonces enseña los totales del grupo y una
- * barra por proyecto en vez del detalle de uno solo.
+ * "Reporte semanal" es la otra mitad: qué se movió estos días y a cuál se le
+ * están acabando las horas, ordenado por urgencia. Es lo que sale por correo
+ * los lunes.
  */
 export default async function ProyectosPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    vista?: string;
     p?: string;
     periodo?: string;
     desde?: string;
@@ -33,7 +38,20 @@ export default async function ProyectosPage({
 }) {
   await exigirSeccion("proyectos");
 
-  const { p, periodo, desde, hasta, cliente } = await searchParams;
+  const { vista, p, periodo, desde, hasta, cliente } = await searchParams;
+  const semanal = vista === "semanal";
+
+  // El reporte semanal no necesita el resto: no tiene selector ni filtros.
+  if (semanal) {
+    const reporte = await reporteSemanal();
+    return (
+      <div style={{ padding: "22px 28px 40px" }}>
+        <PestanasProyectos activa="semanal" />
+        <SemanalScreen d={reporte} />
+      </div>
+    );
+  }
+
   const proyectos = await proyectosConHoras();
 
   /*
@@ -52,11 +70,7 @@ export default async function ProyectosPage({
    * en blanco no dice nada, y ese suele ser el que interesa mirar.
    */
   const elegidos =
-    pedidos.length > 0
-      ? pedidos
-      : proyectos[0]
-        ? [proyectos[0].nombre]
-        : [];
+    pedidos.length > 0 ? pedidos : proyectos[0] ? [proyectos[0].nombre] : [];
 
   // Solo 3, 6 o 12 meses: cualquier otra cosa en la dirección se ignora y se
   // muestra todo, que es el valor por omisión.

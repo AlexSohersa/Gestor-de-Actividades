@@ -28,7 +28,25 @@ export class SinCredenciales extends Error {}
  * permisos: quien llama decide si eso es un error o algo que puede esperar.
  */
 export async function clienteDeLaPersona() {
-  const sesion = await auth();
+  /*
+   * Fuera de una petición, `auth()` no falla: EXPLOTA.
+   *
+   * Lee cabeceras, y sin una petición alrededor lanza un error de Next que no
+   * es `SinCredenciales`, así que se escapaba del `catch` de abajo y tumbaba a
+   * quien llamara. Eso deja sin correo a todo lo que corre solo —el cron del
+   * reporte semanal, los scripts—, que es justo donde el respaldo tendría que
+   * entrar.
+   */
+  // El tipo se saca de la llamada y no de `typeof auth`: `auth` está
+  // sobrecargada —también es middleware— y `ReturnType` toma la firma que no
+  // es.
+  let sesion: { user?: { email?: string | null } | null } | null = null;
+  try {
+    sesion = await auth();
+  } catch {
+    throw new SinCredenciales("No hay una petición con sesión alrededor.");
+  }
+
   const correo = sesion?.user?.email?.toLowerCase();
 
   if (!correo) {

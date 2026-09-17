@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Search, X } from "lucide-react";
 
+import { PestanasProyectos } from "./PestanasProyectos";
+
 import type {
   Comparativa,
   ProyectoEnLista,
@@ -187,6 +189,8 @@ export function RadarScreen({
 
   return (
     <div style={{ padding: "22px 28px 40px" }}>
+      <PestanasProyectos activa="radar" />
+
       {/* ------------------------------------------------------ cabecera --
           Sin `cv-rise`: esa animación crea un contexto de apilamiento propio,
           y el desplegable del buscador quedaba encerrado dentro —por debajo de
