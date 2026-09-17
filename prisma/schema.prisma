@@ -571,6 +571,27 @@ model PersonaRol {
   @@schema("core")
 }
 
+/// Lo que ya se envió solo, para no repetirlo.
+///
+/// El reporte semanal se programa DOS veces —8:30 y 9:00— porque en el plan
+/// Hobby de Vercel el minuto se ignora y el disparo cae en cualquier momento
+/// de la hora: con dos intentos, alguno entra en la ventana pedida. Esta tabla
+/// es lo que evita que lleguen dos correos.
+///
+/// La clave es (clave, día): el segundo intento del mismo lunes choca contra
+/// la primaria y se descarta sin pensar.
+model EnvioProgramado {
+  clave         String
+  dia           DateTime @db.Date
+  enviadoEn     DateTime @default(now()) @map("enviado_en") @db.Timestamptz(6)
+  destinatarios String   @default("")
+  detalle       String?
+
+  @@id([clave, dia])
+  @@map("envio_programado")
+  @@schema("actividad")
+}
+
 /// Quién cambió el papel de quién, y cuándo. La escribe /equipo para dejar
 /// rastro de cada cambio de permisos.
 model BitacoraPermiso {
