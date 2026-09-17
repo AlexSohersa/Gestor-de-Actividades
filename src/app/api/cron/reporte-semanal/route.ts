@@ -11,11 +11,22 @@ import { enviarCorreo } from "@/lib/google/correo";
  * aplicación: un envío programado necesita que alguien lo despierte, y nadie
  * garantiza que haya una pestaña abierta un lunes a las nueve menos cuarto.
  *
- * LA HORA. El cron dice `40 14 * * 1` y Vercel programa en UTC, sin entender
- * de husos: son las 8:40 en México con el horario de invierno (UTC-6) —dentro
- * de la ventana pedida, entre 8:30 y 9— y las 7:40 con el de verano. México
- * ya no cambia de hora desde 2022, así que en la práctica se queda fijo en
- * 8:40; si alguna vez volviera el cambio, habría que mover esta línea.
+ * LA HORA. El cron dice `30 14 * * 1` y Vercel programa siempre en UTC, sin
+ * entender de husos: son las 8:30 en México, que ya no cambia de hora desde
+ * 2022 y se queda fijo en UTC-6.
+ *
+ * Y llega CUANDO LLEGA, no a las 8:30 en punto. Vercel solo garantiza el
+ * minuto exacto en los planes Pro y Enterprise; en Hobby la precisión es "por
+ * hora", lo que significa que un cron de las 14:30 UTC puede dispararse en
+ * cualquier momento entre las 14:00 y las 14:59 —de 8:00 a 8:59 en México—.
+ *
+ * Por eso se eligió :30 y no :00 ni :45. En Pro cae exactamente a las 8:30,
+ * dentro de la ventana pedida; en Hobby cae en esa hora, que es lo más cerca
+ * que se puede estar sin pagar por el minuto. Es un reporte para leer con el
+ * café, no una alarma: media hora arriba o abajo no cambia nada.
+ *
+ * Hobby también limita a un disparo AL DÍA, y este es semanal, así que ahí
+ * no hay problema.
  *
  * Node y no Edge: el envío usa la API de Gmail con `googleapis`, que necesita
  * las librerías de Node.
