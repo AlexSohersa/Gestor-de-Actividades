@@ -830,7 +830,7 @@ function Grupo({ d }: { d: Comparativa }) {
             alignItems: "baseline",
             justifyContent: "space-between",
             gap: 10,
-            marginBottom: 10,
+            marginBottom: 9,
             flexWrap: "wrap",
           }}
         >
@@ -842,10 +842,21 @@ function Grupo({ d }: { d: Comparativa }) {
           </span>
           <span style={{ fontSize: 10.5, color: "var(--cv-ink-4)" }}>
             {d.personas} {d.personas === 1 ? "persona" : "personas"}
+            {/*
+              Un solo aviso rojo, no dos.
+
+              Cuántos proyectos se pasaron y cuántas horas de más lleva el
+              grupo son la misma mala noticia; separarlas gastaba media línea
+              en repetirla. Las horas solo aparecen si el GRUPO se pasó: uno
+              puede irse de presupuesto y el conjunto seguir con holgura.
+            */}
             {d.pasados > 0 && (
               <b style={{ color: ROJO }}>
                 {" · "}
                 {d.pasados} por encima de lo cotizado
+                {d.disponibles !== null &&
+                  d.disponibles < 0 &&
+                  ` (${fmt(-d.disponibles)} h de más)`}
               </b>
             )}
           </span>
@@ -853,14 +864,36 @@ function Grupo({ d }: { d: Comparativa }) {
 
         <span
           style={{
-            display: "block",
-            fontSize: 11,
-            fontWeight: 700,
-            color: "var(--cv-ink-2)",
-            marginBottom: 6,
+            display: "flex",
+            alignItems: "baseline",
+            gap: 8,
+            marginBottom: 5,
           }}
         >
-          Los {d.barras.length} juntos
+          <span
+            style={{
+              flex: 1,
+              fontSize: 11.5,
+              fontWeight: 700,
+              color: "var(--cv-ink-2)",
+            }}
+          >
+            Los {d.barras.length} juntos
+          </span>
+          <span style={{ fontSize: 10, color: "var(--cv-ink-4)" }}>
+            {fmt(d.registradas)} / {fmt(d.cotizadas)} h
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: tonoUso(d.uso),
+              minWidth: 34,
+              textAlign: "right",
+            }}
+          >
+            {d.uso === null ? "—" : `${d.uso}%`}
+          </span>
         </span>
 
         {d.cotizadas > 0 ? (
@@ -868,6 +901,7 @@ function Grupo({ d }: { d: Comparativa }) {
             cotizadas={d.cotizadas}
             registradas={d.registradas}
             uso={d.uso}
+            pie={false}
           />
         ) : (
           <Vacio texto="Ninguno de los elegidos tiene horas cotizadas." />
@@ -883,15 +917,14 @@ function Grupo({ d }: { d: Comparativa }) {
         {d.sinCotizar > 0 && d.cotizadas > 0 && (
           <p
             style={{
-              margin: "9px 0 0",
-              fontSize: 10.5,
+              margin: "7px 0 0",
+              fontSize: 10,
               color: "var(--cv-ink-4)",
-              lineHeight: 1.5,
+              lineHeight: 1.45,
             }}
           >
-            Incluye {fmt(d.sinCotizar)} h de proyectos sin horas cotizadas: esas
-            cuentan en lo gastado, pero no tienen presupuesto contra el que
-            medirse.
+            Incluye {fmt(d.sinCotizar)} h sin presupuesto contra el que
+            medirse: cuentan en lo gastado, no en lo cotizado.
           </p>
         )}
 
@@ -904,40 +937,45 @@ function Grupo({ d }: { d: Comparativa }) {
         */}
         <div
           style={{
-            marginTop: 16,
-            paddingTop: 14,
+            marginTop: 13,
+            paddingTop: 11,
             borderTop: "1px solid var(--cv-line-soft)",
           }}
         >
           <p
             style={{
-              margin: "0 0 14px",
-              fontSize: 10.5,
+              margin: "0 0 10px",
+              fontSize: 10,
               color: "var(--cv-ink-4)",
-              lineHeight: 1.5,
             }}
           >
-            Del más consumido al menos. Cada barra se mide contra el
-            presupuesto de su propio proyecto, no contra el total de arriba.
+            Del más consumido al menos, cada uno contra su propio presupuesto.
           </p>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
-          {d.barras.map((b) => (
-            <div key={b.nombre}>
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  marginBottom: 5,
-                }}
-              >
-                <span style={{ minWidth: 0, flex: 1 }}>
+          {/*
+            Dos líneas por proyecto, no cuatro.
+
+            Tenía el nombre, el cliente debajo, la barra y un pie que repetía
+            el mismo porcentaje del renglón de arriba: cuatro alturas para tres
+            datos. El cliente sale ya en el buscador y en las fichas de
+            arriba, así que aquí sobra; y las horas caben junto al nombre.
+          */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {d.barras.map((b) => (
+              <div key={b.nombre}>
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 8,
+                    marginBottom: 4,
+                  }}
+                >
                   <span
                     style={{
-                      display: "block",
-                      fontSize: 12,
+                      minWidth: 0,
+                      flex: 1,
+                      fontSize: 11.5,
                       fontWeight: 600,
                       color: "var(--cv-ink)",
                       overflow: "hidden",
@@ -947,46 +985,47 @@ function Grupo({ d }: { d: Comparativa }) {
                   >
                     {b.nombre}
                   </span>
-                  {b.cliente && (
-                    <span
-                      style={{ fontSize: 9.5, color: "var(--cv-ink-4)" }}
-                    >
-                      {b.cliente}
-                    </span>
-                  )}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: tonoUso(b.uso),
-                    flexShrink: 0,
-                  }}
-                >
-                  {b.uso === null ? `${fmt(b.registradas)} h` : `${b.uso}%`}
-                </span>
-              </span>
 
-              {b.cotizadas > 0 ? (
-                <Balance
-                  cotizadas={b.cotizadas}
-                  registradas={b.registradas}
-                  uso={b.uso}
-                />
-              ) : (
-                /* Sin presupuesto no hay marco contra el que medir: una barra
-                   llena al 100% diría justo lo contrario de lo que pasa. */
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 10,
-                    color: "var(--cv-ink-4)",
-                  }}
-                >
-                  {fmt(b.registradas)} h registradas · sin horas cotizadas
+                  {/* Las horas en crudo, que es lo que el porcentaje no dice:
+                      un 62% de 5,934 h no es lo mismo que un 62% de 200. */}
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "var(--cv-ink-4)",
+                      flexShrink: 0,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {b.cotizadas > 0
+                      ? `${fmt(b.registradas)} / ${fmt(b.cotizadas)} h`
+                      : `${fmt(b.registradas)} h · sin cotizar`}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: tonoUso(b.uso),
+                      flexShrink: 0,
+                      minWidth: 34,
+                      textAlign: "right",
+                    }}
+                  >
+                    {b.uso === null ? "—" : `${b.uso}%`}
+                  </span>
                 </span>
-              )}
-            </div>
+
+                {/* `pie={false}`: el porcentaje y las horas ya están arriba, y
+                    repetirlos gastaba un renglón por proyecto. */}
+                {b.cotizadas > 0 && (
+                  <Balance
+                    cotizadas={b.cotizadas}
+                    registradas={b.registradas}
+                    uso={b.uso}
+                    pie={false}
+                    alto={9}
+                  />
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -1471,10 +1510,15 @@ function Balance({
   cotizadas,
   registradas,
   uso,
+  pie = true,
+  alto = 14,
 }: {
   cotizadas: number;
   registradas: number;
   uso: number | null;
+  /** El renglón de debajo. Se apaga donde esas cifras ya están al lado. */
+  pie?: boolean;
+  alto?: number;
 }) {
   const pasado = registradas > cotizadas;
   // Al rebasar, la escala la marca lo consumido: si no, la parte roja se
@@ -1490,8 +1534,8 @@ function Balance({
         style={{
           display: "block",
           position: "relative",
-          height: 14,
-          borderRadius: 7,
+          height: alto,
+          borderRadius: alto / 2,
           background: "var(--cv-faint)",
           overflow: "hidden",
         }}
@@ -1531,6 +1575,7 @@ function Balance({
         )}
       </span>
 
+      {pie && (
       <div
         style={{
           display: "flex",
@@ -1549,6 +1594,7 @@ function Balance({
           </span>
         )}
       </div>
+      )}
     </div>
   );
 }
