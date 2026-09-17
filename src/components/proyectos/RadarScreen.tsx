@@ -377,7 +377,31 @@ export function RadarScreen({
                       flexShrink: 0,
                     }}
                   >
-                    {p.uso === null ? `${fmt(p.registradas)} h` : `${p.uso}%`}
+                    {/*
+                      Sin horas cotizadas no hay porcentaje que calcular.
+
+                      Son los internos —ESTANDARIZACIÓN DE PROCESOS, AUSENCIAS,
+                      MARKETING…—: veintiocho de noventa y seis. Se enseñan sus
+                      horas y se dice que no hay contra qué medirlas, porque un
+                      "0%" o un guion harían pensar que nadie ha trabajado.
+                    */}
+                    {p.uso === null ? (
+                      <span style={{ textAlign: "right", display: "block" }}>
+                        {fmt(p.registradas)} h
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 8.5,
+                            fontWeight: 600,
+                            color: "var(--cv-ink-4)",
+                          }}
+                        >
+                          sin cotizar
+                        </span>
+                      </span>
+                    ) : (
+                      `${p.uso}%`
+                    )}
                   </span>
                 </a>
                 );
@@ -814,7 +838,7 @@ function Grupo({ d }: { d: Comparativa }) {
             className="soh-display"
             style={{ fontSize: 13, fontWeight: 700, color: "var(--cv-ink)" }}
           >
-            Los {d.barras.length} proyectos juntos
+            Horas cotizadas contra gastadas
           </span>
           <span style={{ fontSize: 10.5, color: "var(--cv-ink-4)" }}>
             {d.personas} {d.personas === 1 ? "persona" : "personas"}
@@ -825,6 +849,18 @@ function Grupo({ d }: { d: Comparativa }) {
               </b>
             )}
           </span>
+        </span>
+
+        <span
+          style={{
+            display: "block",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "var(--cv-ink-2)",
+            marginBottom: 6,
+          }}
+        >
+          Los {d.barras.length} juntos
         </span>
 
         {d.cotizadas > 0 ? (
@@ -858,37 +894,34 @@ function Grupo({ d }: { d: Comparativa }) {
             medirse.
           </p>
         )}
-      </div>
 
-      <div
-        className="cv-card cv-rise"
-        style={{ borderRadius: 18, padding: "16px 18px", animationDelay: ".05s" }}
-      >
-        <span
-          className="soh-display"
+        {/*
+          El desglose, DENTRO de la misma tarjeta.
+
+          Eran dos tarjetas separadas y se leían como dos gráficas distintas.
+          Es una sola: el total arriba y de qué se compone debajo, separados
+          por una línea y no por un hueco.
+        */}
+        <div
           style={{
-            display: "block",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "var(--cv-ink)",
-            marginBottom: 4,
+            marginTop: 16,
+            paddingTop: 14,
+            borderTop: "1px solid var(--cv-line-soft)",
           }}
         >
-          Uno por uno
-        </span>
-        <p
-          style={{
-            margin: "0 0 14px",
-            fontSize: 11,
-            color: "var(--cv-ink-4)",
-            lineHeight: 1.5,
-          }}
-        >
-          Del más consumido al menos. Cada barra se mide contra el presupuesto
-          de su propio proyecto, no contra el total.
-        </p>
+          <p
+            style={{
+              margin: "0 0 14px",
+              fontSize: 10.5,
+              color: "var(--cv-ink-4)",
+              lineHeight: 1.5,
+            }}
+          >
+            Del más consumido al menos. Cada barra se mide contra el
+            presupuesto de su propio proyecto, no contra el total de arriba.
+          </p>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
           {d.barras.map((b) => (
             <div key={b.nombre}>
               <span
@@ -954,7 +987,8 @@ function Grupo({ d }: { d: Comparativa }) {
                 </span>
               )}
             </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </>
