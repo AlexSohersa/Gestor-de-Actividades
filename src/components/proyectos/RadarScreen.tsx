@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Check, Search, X } from "lucide-react";
 
 import type {
+  Comparativa,
   ProyectoEnLista,
   RadarProyecto,
 } from "@/lib/proyectos/radar";
@@ -64,6 +65,19 @@ const PERIODOS = [
   { id: "12", label: "1 año" },
 ] as const;
 
+/** El campo de fecha: se marca en navy cuando lleva algo escrito. */
+const campoFecha = (activo: boolean): React.CSSProperties => ({
+  border: `1px solid ${activo ? NAVY : "var(--cv-line)"}`,
+  background: "#fff",
+  color: "var(--cv-ink-2)",
+  fontFamily: "inherit",
+  fontSize: 11,
+  fontWeight: 600,
+  padding: "6px 8px",
+  borderRadius: 9,
+  outline: "none",
+});
+
 /** Verde mientras sobre holgura, ámbar cerca del límite, rojo al pasarse. */
 function tonoUso(uso: number | null): string {
   if (uso === null) return "var(--cv-ink-3)";
@@ -75,31 +89,101 @@ function tonoUso(uso: number | null): string {
 export function RadarScreen({
   proyectos,
   inicial,
+  comparativa,
+  elegidos,
   periodo,
+  desde,
+  hasta,
+  cliente,
 }: {
   proyectos: ProyectoEnLista[];
+  /** El tablero completo, cuando hay UN proyecto elegido. */
   inicial: RadarProyecto | null;
+  /** Los totales y las barras, cuando hay VARIOS. */
+  comparativa: Comparativa | null;
+  elegidos: string[];
   /** El periodo activo, tal como viene de la dirección. */
   periodo: string;
+  desde: string;
+  hasta: string;
+  cliente: string;
 }) {
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState(false);
+  /** El buscador entero: para saber si el foco se fue dentro o fuera. */
+  const cajaRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * Los clientes que de verdad se pueden elegir.
+   *
+   * Salen de los proyectos que TIENEN HORAS, no del padrón entero: ofrecer
+   * los 148 de la base incluiría decenas sin un solo proyecto con actividad, y
+   * elegirlos dejaría la pantalla vacía sin explicar por qué.
+   */
+  const clientes = useMemo(
+    () =>
+      ([...new Set(proyectos.map((p) => p.cliente).filter(Boolean))] as string[])
+        .sort((a, b) => a.localeCompare(b, "es")),
+    [proyectos],
+  );
 
   const lista = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return q ? proyectos.filter((p) => p.nombre.toLowerCase().includes(q)) : proyectos;
-  }, [proyectos, busqueda]);
+    return proyectos.filter(
+      (p) =>
+        (!cliente || p.cliente === cliente) &&
+        (!q || p.nombre.toLowerCase().includes(q)),
+    );
+  }, [proyectos, busqueda, cliente]);
 
   const d = inicial;
+  const varios = elegidos.length > 1;
 
-  /** Conserva el proyecto al cambiar de periodo, y al revés. */
-  const enlace = (p: string, per: string) => {
+  /*
+   * La dirección es el estado de la pantalla.
+   *
+   * Todo filtro va ahí y no en `useState`: así la vista se puede compartir,
+   * recargar y volver atrás. `enlace` reescribe solo lo que se toca y conserva
+   * el resto.
+   */
+  const enlace = (cambios: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
-    if (p) q.set("p", p);
-    if (per) q.set("periodo", per);
+    const base: Record<string, string> = {
+      p: elegidos.join("|"),
+      periodo,
+      desde,
+      hasta,
+      cliente,
+    };
+    for (const [k, v] of Object.entries({ ...base, ...cambios })) {
+      if (v) q.set(k, v);
+    }
     return `/proyectos${q.toString() ? `?${q}` : ""}`;
   };
+
+  const ir = (cambios: Record<string, string | undefined>) =>
+    router.push(enlace(cambios));
+
+  /*
+   * Elegir ALTERNA: añade el proyecto, o lo quita si ya estaba.
+   *
+   * Nunca se queda en cero —sin ninguno la pantalla no tiene nada que
+   * enseñar—, así que quitar el último se ignora.
+   */
+  const alternado = (nombre: string) => {
+    const siguientes = elegidos.includes(nombre)
+      ? elegidos.filter((n) => n !== nombre)
+      : [...elegidos, nombre];
+    // Nunca cero: sin ninguno la pantalla no tendría nada que enseñar.
+    return siguientes.length === 0 ? elegidos : siguientes;
+  };
+
+  const alternar = (nombre: string) => ir({ p: alternado(nombre).join("|") });
+
+  /** Fechas escritas y atajo de meses se apagan mutuamente. */
+  const fijarRango = (campo: "desde" | "hasta", valor: string) =>
+    ir({ [campo]: valor, periodo: "" });
 
   return (
     <div style={{ padding: "22px 28px 40px" }}>
@@ -132,12 +216,17 @@ export function RadarScreen({
             Reunión de radar
           </h1>
           <p style={{ fontSize: 12.5, color: "var(--cv-ink-3)", margin: "4px 0 0" }}>
-            Consulta de estatus por proyecto
+            {varios
+              ? `Comparando ${elegidos.length} proyectos`
+              : "Consulta de estatus por proyecto"}
           </p>
         </div>
 
         {/* selector de proyecto */}
-        <div style={{ position: "relative", width: 320, maxWidth: "100%" }}>
+        <div
+          ref={cajaRef}
+          style={{ position: "relative", width: 320, maxWidth: "100%" }}
+        >
           <label
             className="cv-card"
             style={{
@@ -158,8 +247,21 @@ export function RadarScreen({
                 setAbierto(true);
               }}
               onFocus={() => setAbierto(true)}
-              onBlur={() => setTimeout(() => setAbierto(false), 160)}
-              placeholder={d?.proyecto ?? "Selecciona un proyecto…"}
+              /*
+                No se cierra al perder el foco por un clic DENTRO de la lista.
+                Elegir varios es marcar tres o cuatro seguidos, y cerrar en
+                cada uno obliga a reabrir el buscador cada vez. Se cierra al
+                salirse de verdad, que es lo que hace el `mousedown` de fuera.
+              */
+              onBlur={(e) => {
+                if (cajaRef.current?.contains(e.relatedTarget as Node)) return;
+                setTimeout(() => setAbierto(false), 160);
+              }}
+              placeholder={
+                varios
+                  ? `${elegidos.length} proyectos elegidos`
+                  : (d?.proyecto ?? "Selecciona un proyecto…")
+              }
               style={{
                 flex: 1,
                 minWidth: 0,
@@ -168,7 +270,7 @@ export function RadarScreen({
                 background: "transparent",
                 fontFamily: "inherit",
                 fontSize: 12.5,
-                fontWeight: d ? 700 : 400,
+                fontWeight: d || varios ? 700 : 400,
                 color: "var(--cv-ink)",
               }}
             />
@@ -190,20 +292,26 @@ export function RadarScreen({
                 boxShadow: "0 18px 40px rgba(7,23,43,.18)",
               }}
             >
-              {lista.slice(0, 40).map((p) => (
+              {lista.slice(0, 40).map((p) => {
+                const marcado = elegidos.includes(p.nombre);
+                return (
                 <a
                   key={p.nombre}
-                  href={enlace(p.nombre, periodo)}
+                  href={enlace({ p: alternado(p.nombre).join("|") })}
                   onMouseDown={(e) => {
                     // Solo el botón principal: el secundario abre su menú y el
                     // central abre en otra pestaña, y ninguno debe navegar aquí.
                     if (e.button !== 0) return;
                     e.preventDefault();
-                    router.push(enlace(p.nombre, periodo));
-                    setAbierto(false);
+                    alternar(p.nombre);
+                    // La lista NO se cierra: comparar es elegir varios
+                    // seguidos, y reabrirla cada vez multiplica los clics.
                     setBusqueda("");
                   }}
                   className="cv-row-h"
+                  // `aria-current` y no `aria-pressed`: esto es un enlace, y
+                  // un enlace no se "presiona" — se sigue o no.
+                  aria-current={marcado ? "true" : undefined}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -211,14 +319,34 @@ export function RadarScreen({
                     padding: "8px 10px",
                     borderRadius: 9,
                     textDecoration: "none",
+                    background: marcado ? "var(--cv-faint)" : "transparent",
                   }}
                 >
+                  {/* La palomita dice que ya está dentro, y que volver a
+                      tocarlo lo saca. */}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 4,
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: `1px solid ${marcado ? NAVY : "var(--cv-line)"}`,
+                      background: marcado ? NAVY : "#fff",
+                      color: "#fff",
+                    }}
+                  >
+                    {marcado && <Check size={10} strokeWidth={3.5} />}
+                  </span>
                   <span
                     style={{
                       flex: 1,
                       minWidth: 0,
                       fontSize: 12,
-                      fontWeight: 600,
+                      fontWeight: marcado ? 700 : 600,
                       color: "var(--cv-ink)",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -226,6 +354,20 @@ export function RadarScreen({
                     }}
                   >
                     {p.nombre}
+                    {p.cliente && (
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 9.5,
+                          fontWeight: 500,
+                          color: "var(--cv-ink-4)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {p.cliente}
+                      </span>
+                    )}
                   </span>
                   <span
                     style={{
@@ -238,7 +380,8 @@ export function RadarScreen({
                     {p.uso === null ? `${fmt(p.registradas)} h` : `${p.uso}%`}
                   </span>
                 </a>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -247,11 +390,12 @@ export function RadarScreen({
             funciona aunque el JavaScript no haya cargado */}
         <span style={{ display: "flex", gap: 3, flexShrink: 0 }}>
           {PERIODOS.map((p) => {
-            const on = periodo === p.id;
+            // Con un rango escrito ningun atajo esta activo: el rango manda.
+            const on = !desde && !hasta && periodo === p.id;
             return (
               <a
                 key={p.id}
-                href={enlace(d?.proyecto ?? "", p.id)}
+                href={enlace({ periodo: p.id, desde: "", hasta: "" })}
                 className="cv-btn"
                 style={{
                   border: "none",
@@ -272,7 +416,152 @@ export function RadarScreen({
         </span>
       </div>
 
-      {!d ? (
+      {/* ------------------------------------------------ segunda fila --
+          Cliente, rango de fechas y lo que hay elegido. Van bajo la cabecera
+          y no dentro: ahí arriba ya compiten el título, el buscador y los
+          cuatro atajos, y meter tres cosas más dejaba todo en una tira
+          ilegible. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 16,
+        }}
+      >
+        {/* cliente */}
+        <select
+          value={cliente}
+          onChange={(e) => ir({ cliente: e.target.value, p: "" })}
+          aria-label="Filtrar por cliente"
+          style={{
+            border: `1px solid ${cliente ? NAVY : "var(--cv-line)"}`,
+            background: "#fff",
+            color: "var(--cv-ink-2)",
+            fontFamily: "inherit",
+            fontSize: 11.5,
+            fontWeight: 600,
+            padding: "7px 10px",
+            borderRadius: 10,
+            maxWidth: 230,
+            cursor: "pointer",
+            outline: "none",
+          }}
+        >
+          <option value="">Todos los clientes</option>
+          {clientes.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+
+        {/* rango de fechas */}
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 11,
+            color: "var(--cv-ink-4)",
+          }}
+        >
+          <span>Del</span>
+          <input
+            type="date"
+            value={desde}
+            max={hasta || undefined}
+            onChange={(e) => fijarRango("desde", e.target.value)}
+            aria-label="Desde"
+            style={campoFecha(Boolean(desde))}
+          />
+          <span>al</span>
+          <input
+            type="date"
+            value={hasta}
+            min={desde || undefined}
+            onChange={(e) => fijarRango("hasta", e.target.value)}
+            aria-label="Hasta"
+            style={campoFecha(Boolean(hasta))}
+          />
+        </span>
+
+        {(desde || hasta || cliente) && (
+          <button
+            type="button"
+            onClick={() => ir({ desde: "", hasta: "", cliente: "" })}
+            className="cv-btn"
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--cv-ink-4)",
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "6px 4px",
+              cursor: "pointer",
+            }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+
+        <span style={{ flex: 1 }} />
+
+        {/* Lo elegido, para poder quitarlo sin abrir el buscador. */}
+        {varios && (
+          <span style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            {elegidos.map((n) => (
+              <span
+                key={n}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background: "var(--cv-faint)",
+                  border: "1px solid var(--cv-line-soft)",
+                  borderRadius: 999,
+                  padding: "4px 6px 4px 10px",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  color: "var(--cv-ink-2)",
+                  maxWidth: 220,
+                }}
+              >
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {n}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => alternar(n)}
+                  aria-label={`Quitar ${n}`}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--cv-ink-4)",
+                    cursor: "pointer",
+                    padding: 0,
+                    lineHeight: 0,
+                    flexShrink: 0,
+                  }}
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+
+      {varios && comparativa ? (
+        <Grupo d={comparativa} />
+      ) : !d ? (
         <div
           className="cv-card cv-rise"
           style={{ borderRadius: 18, padding: "48px 26px", textAlign: "center" }}
@@ -465,6 +754,212 @@ export function RadarScreen({
 }
 
 /* ==================== piezas ========================================= */
+
+/**
+ * Varios proyectos a la vez: el total del grupo y el desglose.
+ *
+ * Arriba las mismas cuatro cifras que un proyecto suelto, pero sumadas, y la
+ * misma barra: el marco es todo lo cotizado del grupo y el relleno lo gastado.
+ * Debajo, esa barra repetida proyecto por proyecto —idéntica, a la misma
+ * escala de su propio presupuesto— para ver de dónde sale el total.
+ *
+ * Se ordenan por consumo y no por horas: cuando se comparan varios, lo que se
+ * busca es cuál va apretado, no cuál es más grande.
+ */
+function Grupo({ d }: { d: Comparativa }) {
+  return (
+    <>
+      <div
+        className="cv-rise"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 12,
+          marginBottom: 16,
+        }}
+      >
+        <Cifra rotulo="Horas cotizadas" valor={fmt(d.cotizadas)} tono={NAVY} />
+        <Cifra rotulo="Horas registradas" valor={fmt(d.registradas)} tono={NAVY} />
+        <Cifra
+          rotulo="% uso de horas"
+          valor={d.uso === null ? "—" : `${d.uso} %`}
+          tono={tonoUso(d.uso)}
+        />
+        <Cifra
+          rotulo={
+            d.disponibles !== null && d.disponibles < 0
+              ? "Horas excedidas"
+              : "Horas disponibles"
+          }
+          valor={d.disponibles === null ? "—" : fmt(Math.abs(d.disponibles))}
+          tono={d.disponibles !== null && d.disponibles < 0 ? ROJO : VERDE}
+        />
+      </div>
+
+      <div
+        className="cv-card cv-rise"
+        style={{ borderRadius: 18, padding: "16px 18px", marginBottom: 16 }}
+      >
+        <span
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 10,
+            marginBottom: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <span
+            className="soh-display"
+            style={{ fontSize: 13, fontWeight: 700, color: "var(--cv-ink)" }}
+          >
+            Los {d.barras.length} proyectos juntos
+          </span>
+          <span style={{ fontSize: 10.5, color: "var(--cv-ink-4)" }}>
+            {d.personas} {d.personas === 1 ? "persona" : "personas"}
+            {d.pasados > 0 && (
+              <b style={{ color: ROJO }}>
+                {" · "}
+                {d.pasados} por encima de lo cotizado
+              </b>
+            )}
+          </span>
+        </span>
+
+        {d.cotizadas > 0 ? (
+          <Balance
+            cotizadas={d.cotizadas}
+            registradas={d.registradas}
+            uso={d.uso}
+          />
+        ) : (
+          <Vacio texto="Ninguno de los elegidos tiene horas cotizadas." />
+        )}
+
+        {/*
+          Lo que no se puede comparar, dicho y no escondido.
+
+          Un proyecto sin horas cotizadas suma al gasto pero no al marco, con
+          lo que el porcentaje del grupo sale más alto de lo que fue. Callarlo
+          haría parecer que el grupo va peor de lo que va.
+        */}
+        {d.sinCotizar > 0 && d.cotizadas > 0 && (
+          <p
+            style={{
+              margin: "9px 0 0",
+              fontSize: 10.5,
+              color: "var(--cv-ink-4)",
+              lineHeight: 1.5,
+            }}
+          >
+            Incluye {fmt(d.sinCotizar)} h de proyectos sin horas cotizadas: esas
+            cuentan en lo gastado, pero no tienen presupuesto contra el que
+            medirse.
+          </p>
+        )}
+      </div>
+
+      <div
+        className="cv-card cv-rise"
+        style={{ borderRadius: 18, padding: "16px 18px", animationDelay: ".05s" }}
+      >
+        <span
+          className="soh-display"
+          style={{
+            display: "block",
+            fontSize: 13,
+            fontWeight: 700,
+            color: "var(--cv-ink)",
+            marginBottom: 4,
+          }}
+        >
+          Uno por uno
+        </span>
+        <p
+          style={{
+            margin: "0 0 14px",
+            fontSize: 11,
+            color: "var(--cv-ink-4)",
+            lineHeight: 1.5,
+          }}
+        >
+          Del más consumido al menos. Cada barra se mide contra el presupuesto
+          de su propio proyecto, no contra el total.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+          {d.barras.map((b) => (
+            <div key={b.nombre}>
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 5,
+                }}
+              >
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "var(--cv-ink)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {b.nombre}
+                  </span>
+                  {b.cliente && (
+                    <span
+                      style={{ fontSize: 9.5, color: "var(--cv-ink-4)" }}
+                    >
+                      {b.cliente}
+                    </span>
+                  )}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: tonoUso(b.uso),
+                    flexShrink: 0,
+                  }}
+                >
+                  {b.uso === null ? `${fmt(b.registradas)} h` : `${b.uso}%`}
+                </span>
+              </span>
+
+              {b.cotizadas > 0 ? (
+                <Balance
+                  cotizadas={b.cotizadas}
+                  registradas={b.registradas}
+                  uso={b.uso}
+                />
+              ) : (
+                /* Sin presupuesto no hay marco contra el que medir: una barra
+                   llena al 100% diría justo lo contrario de lo que pasa. */
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 10,
+                    color: "var(--cv-ink-4)",
+                  }}
+                >
+                  {fmt(b.registradas)} h registradas · sin horas cotizadas
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
 
 function Cifra({
   rotulo,

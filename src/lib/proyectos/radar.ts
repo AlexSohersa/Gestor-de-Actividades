@@ -80,12 +80,44 @@ export type RadarProyecto = {
   pasados: number;
 };
 
-/** Un proyecto en el selector, con lo justo para ordenarlos. */
+/** Un proyecto en el selector, con lo justo para ordenarlos y filtrarlos. */
 export type ProyectoEnLista = {
   nombre: string;
   registradas: number;
   cotizadas: number;
   uso: number | null;
+  /** De quién es. `null` cuando el proyecto no tiene cliente asignado. */
+  cliente: string | null;
+};
+
+/** Un proyecto dentro de la comparativa, con lo que pinta su barra. */
+export type BarraProyecto = {
+  nombre: string;
+  cliente: string | null;
+  cotizadas: number;
+  registradas: number;
+  uso: number | null;
+};
+
+/**
+ * Varios proyectos a la vez: los totales y el desglose.
+ *
+ * Es lo que se mira cuando la pregunta no es "cómo va este" sino "cómo vamos
+ * con estos": un total de lo cotizado contra lo gastado, y debajo la misma
+ * lectura proyecto por proyecto para ver cuál se está comiendo el margen.
+ */
+export type Comparativa = {
+  cotizadas: number;
+  registradas: number;
+  uso: number | null;
+  disponibles: number | null;
+  /** De más consumido a menos: el que urge mirar va arriba. */
+  barras: BarraProyecto[];
+  /** Cuántos de ellos ya pasaron de lo cotizado. */
+  pasados: number;
+  personas: number;
+  /** El total de horas de los que no tienen nada cotizado. */
+  sinCotizar: number;
 };
 
 /** Una fila de horas ya normalizada para el cálculo del radar. */
@@ -120,13 +152,22 @@ export const proyectosConHoras = cache(async function proyectosConHoras(): Promi
       where: { proyectoCodigo: { not: null } },
       _sum: { horas: true },
     }),
-    db.proyecto.findMany({ select: { codigo: true, nombre: true } }),
+    db.proyecto.findMany({
+      select: {
+        codigo: true,
+        nombre: true,
+        cliente: { select: { nombre: true } },
+      },
+    }),
   ]);
 
   // La pantalla identifica el proyecto por su NOMBRE (es lo que enseña y lo que
   // pone en la dirección), pero las horas cuelgan del código: este padrón es el
   // puente entre los dos.
   const nombrePorCodigo = new Map(padron.map((p) => [p.codigo, p.nombre]));
+  const clientePorCodigo = new Map(
+    padron.map((p) => [p.codigo, p.cliente?.nombre ?? null]),
+  );
 
   const cotPorCodigo = new Map(
     cot.map((c) => [c.proyectoCodigo, Number(c._sum.horas ?? 0)]),
@@ -146,6 +187,7 @@ export const proyectosConHoras = cache(async function proyectosConHoras(): Promi
         registradas,
         cotizadas,
         uso: cotizadas > 0 ? Math.round((registradas / cotizadas) * 100) : null,
+        cliente: clientePorCodigo.get(codigo) ?? null,
       };
     })
     .sort((a, b) => b.registradas - a.registradas);
@@ -159,10 +201,14 @@ export const proyectosConHoras = cache(async function proyectosConHoras(): Promi
  *
  * `meses` acota por meses hacia atrás; `null` es toda la historia, que es lo
  * que interesa al mirar cuánto se lleva consumido de lo cotizado.
+ *
+ * `rango` acota entre dos días concretos y MANDA sobre `meses`: quien escribe
+ * unas fechas quiere esas, no las de un atajo que se quedó marcado.
  */
 export const radarDeProyecto = cache(async function radarDeProyecto(
   proyecto: string,
   meses: number | null = null,
+  rango?: { desde?: string; hasta?: string },
 ): Promise<RadarProyecto | null> {
   if (!proyecto) return null;
 
@@ -172,19 +218,47 @@ export const radarDeProyecto = cache(async function radarDeProyecto(
   });
   if (!padron) return null;
 
-  const desde = meses
-    ? (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - meses);
-        return d;
-      })()
-    : undefined;
+  /*
+   * La ventana de tiempo.
+   *
+   * Las fechas escritas ganan al atajo de meses: si alguien teclea un rango,
+   * es porque quiere ese y no "los últimos seis". Se leen a mediodía UTC
+   * porque `fecha` es columna `date` y en nuestra zona, negativa, medianoche
+   * se corre al día anterior.
+   */
+  const dia = (iso?: string) =>
+    iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)
+      ? new Date(`${iso}T12:00:00.000Z`)
+      : undefined;
+
+  const desdeRango = dia(rango?.desde);
+  const hastaRango = dia(rango?.hasta);
+
+  const desde =
+    desdeRango ??
+    (meses
+      ? (() => {
+          const d = new Date();
+          d.setMonth(d.getMonth() - meses);
+          return d;
+        })()
+      : undefined);
+
+  const ventana =
+    desde || hastaRango
+      ? {
+          fecha: {
+            ...(desde ? { gte: desde } : {}),
+            ...(hastaRango ? { lte: hastaRango } : {}),
+          },
+        }
+      : {};
 
   const [filasPrisma, cotizadasFilas] = await Promise.all([
     db.hora.findMany({
       where: {
         proyectoCodigo: padron.codigo,
-        ...(desde ? { fecha: { gte: desde } } : {}),
+        ...ventana,
       },
       orderBy: { fecha: "asc" },
       select: {
@@ -343,3 +417,131 @@ export const radarDeProyecto = cache(async function radarDeProyecto(
     pasados: entregables.filter((e) => e.uso !== null && e.uso > 1).length,
   };
 });
+
+/**
+ * Varios proyectos a la vez.
+ *
+ * Reúne lo cotizado y lo registrado de cada uno y los suma, para poder mirar
+ * un grupo —un cliente, un trimestre, los tres que van apretados— sin abrirlos
+ * de uno en uno.
+ *
+ * No reutiliza `radarDeProyecto` en bucle a propósito: aquella trae la serie
+ * diaria, la dona y los entregables de cada proyecto, y aquí nada de eso se
+ * enseña. Con quince proyectos serían quince consultas pesadas para pintar
+ * quince barras.
+ */
+export const comparativaDeProyectos = cache(
+  async function comparativaDeProyectos(
+    nombres: string[],
+    meses: number | null = null,
+    rango?: { desde?: string; hasta?: string },
+  ): Promise<Comparativa | null> {
+    if (nombres.length === 0) return null;
+
+    const padron = await db.proyecto.findMany({
+      where: { OR: [{ codigo: { in: nombres } }, { nombre: { in: nombres } }] },
+      select: {
+        codigo: true,
+        nombre: true,
+        cliente: { select: { nombre: true } },
+      },
+    });
+    if (padron.length === 0) return null;
+
+    const codigos = padron.map((p) => p.codigo);
+
+    const dia = (iso?: string) =>
+      iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)
+        ? new Date(`${iso}T12:00:00.000Z`)
+        : undefined;
+
+    const desdeRango = dia(rango?.desde);
+    const hastaRango = dia(rango?.hasta);
+
+    const desde =
+      desdeRango ??
+      (meses
+        ? (() => {
+            const d = new Date();
+            d.setMonth(d.getMonth() - meses);
+            return d;
+          })()
+        : undefined);
+
+    const ventana =
+      desde || hastaRango
+        ? {
+            fecha: {
+              ...(desde ? { gte: desde } : {}),
+              ...(hastaRango ? { lte: hastaRango } : {}),
+            },
+          }
+        : {};
+
+    const [reg, cot, personas] = await Promise.all([
+      db.hora.groupBy({
+        by: ["proyectoCodigo"],
+        where: { proyectoCodigo: { in: codigos }, ...ventana },
+        _sum: { horas: true },
+      }),
+      /*
+       * Lo cotizado NO se acota por fechas.
+       *
+       * Es el presupuesto del proyecto entero, no algo que ocurra en un día:
+       * filtrarlo por la ventana dejaría el marco en cero y toda barra saldría
+       * desbordada. La ventana solo recorta lo registrado —"cuánto se gastó en
+       * estos meses"—, que es lo que se quiere comparar.
+       */
+      db.horaCotizada.groupBy({
+        by: ["proyectoCodigo"],
+        where: { proyectoCodigo: { in: codigos } },
+        _sum: { horas: true },
+      }),
+      db.hora.findMany({
+        where: { proyectoCodigo: { in: codigos }, ...ventana },
+        select: { personaId: true },
+        distinct: ["personaId"],
+      }),
+    ]);
+
+    const regPorCodigo = new Map(
+      reg.map((r) => [r.proyectoCodigo, Number(r._sum.horas ?? 0)]),
+    );
+    const cotPorCodigo = new Map(
+      cot.map((c) => [c.proyectoCodigo, Number(c._sum.horas ?? 0)]),
+    );
+
+    const barras: BarraProyecto[] = padron
+      .map((p) => {
+        const registradas = regPorCodigo.get(p.codigo) ?? 0;
+        const cotizadas = cotPorCodigo.get(p.codigo) ?? 0;
+        return {
+          nombre: p.nombre,
+          cliente: p.cliente?.nombre ?? null,
+          cotizadas,
+          registradas,
+          uso:
+            cotizadas > 0 ? Math.round((registradas / cotizadas) * 100) : null,
+        };
+      })
+      // De más apretado a menos: el que urge mirar va arriba. Los que no
+      // tienen nada cotizado no compiten en ese orden, así que van por horas.
+      .sort((a, b) => (b.uso ?? -1) - (a.uso ?? -1) || b.registradas - a.registradas);
+
+    const cotizadas = barras.reduce((n, b) => n + b.cotizadas, 0);
+    const registradas = barras.reduce((n, b) => n + b.registradas, 0);
+
+    return {
+      cotizadas,
+      registradas,
+      uso: cotizadas > 0 ? Math.round((registradas / cotizadas) * 100) : null,
+      disponibles: cotizadas > 0 ? cotizadas - registradas : null,
+      barras,
+      pasados: barras.filter((b) => b.uso !== null && b.uso > 100).length,
+      personas: personas.length,
+      sinCotizar: barras
+        .filter((b) => b.cotizadas === 0)
+        .reduce((n, b) => n + b.registradas, 0),
+    };
+  },
+);
