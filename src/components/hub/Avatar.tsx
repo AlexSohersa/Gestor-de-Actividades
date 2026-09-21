@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function initials(name?: string | null, email?: string | null): string {
   const source = name?.trim() || email?.split("@")[0] || "?";
@@ -39,8 +39,30 @@ export function Avatar({
   /** Punto verde de "en línea" en la esquina. */
   online?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
-  const showPhoto = Boolean(image) && !failed;
+  /*
+   * Un fallo al cargar no es definitivo.
+   *
+   * Antes, un solo `onError` dejaba las iniciales para el resto de la sesión:
+   * una petición que no llegó, un momento de red o un límite pasajero de
+   * Google bastaban, y la foto no volvía hasta cerrar sesión —que es lo único
+   * que monta este componente de cero—.
+   *
+   * Ahora se reintenta una vez, con la dirección marcada para que el navegador
+   * no sirva el fallo que acaba de guardar. Si el segundo intento también
+   * falla, entonces sí se queda en iniciales: la foto no existe o la cuenta no
+   * tiene.
+   */
+  const [intento, setIntento] = useState(0);
+  const rendido = intento > 1;
+  const showPhoto = Boolean(image) && !rendido;
+
+  /* Al cambiar de persona —o de dirección— se empieza de nuevo: el avatar de
+     alguien no debe heredar el fallo del anterior. */
+  useEffect(() => {
+    setIntento(0);
+  }, [image]);
+
+  const src = intento === 0 ? image : `${image}${String(image).includes("?") ? "&" : "?"}r=${intento}`;
   const dot = Math.round(size * 0.21);
 
   return (
@@ -58,10 +80,10 @@ export function Avatar({
         {showPhoto ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={image as string}
+            src={src as string}
             alt=""
             referrerPolicy="no-referrer"
-            onError={() => setFailed(true)}
+            onError={() => setIntento((n) => n + 1)}
             style={{
               width: "100%",
               height: "100%",
