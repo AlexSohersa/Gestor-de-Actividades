@@ -45,7 +45,7 @@ export async function catalogosActividad(): Promise<{
   >`
     SELECT kind, value, parent, extra
     FROM public."Catalog"
-    WHERE active AND kind IN ('proyecto', 'entregable', 'tipo', 'esfuerzo')
+    WHERE active AND kind IN ('entregable', 'tipo', 'esfuerzo')
     ORDER BY kind, position, value
   `;
 
@@ -55,11 +55,67 @@ export async function catalogosActividad(): Promise<{
       .map((f) => ({ value: f.value, parent: f.parent, extra: f.extra }));
 
   return {
-    proyectos: de("proyecto"),
+    proyectos: await proyectosParaReportar(),
     entregables: de("entregable"),
     tipos: de("tipo"),
     esfuerzos: de("esfuerzo"),
   };
+}
+
+/**
+ * Los proyectos a los que se puede reportar HOY.
+ *
+ * Ya no salen de `public.Catalog`: esa tabla se llenó en la migración y nadie
+ * la actualiza, así que ofrecía 215 nombres congelados —con 63 proyectos ya
+ * cerrados dentro, cuatro activos que no se podían elegir, y trece nombres que
+ * ni siquiera existen ya—.
+ *
+ * El estatus se decide así:
+ *
+ *   1. `deal."Project".status` MANDA. Es donde se administra de verdad: hay un
+ *      módulo en el Deal Engine para moverlo, y es lo único que alguien
+ *      mantiene.
+ *   2. Si el proyecto no está en `deal` vale `core.proyecto.estado`. Ahí viven
+ *      los internos —AUSENCIAS, RECURSOS HUMANOS, MARKETING, CAPACITACIONES—
+ *      que nunca fueron una venta y por eso nunca pasaron por el Deal Engine.
+ *      Son veintitrés proyectos con más de tres mil horas: filtrar solo por
+ *      `deal` dejaría a media oficina sin dónde reportar.
+ *
+ * Entran los ACTIVO y los PAUSADO, más cualquiera con horas en los últimos 60
+ * días aunque su estatus diga otra cosa: hay trabajo en curso en proyectos que
+ * siguen marcados como COTIZACION —dos mil horas entre tres—, y bloquearlos
+ * obligaría a reportar en otro sitio para que cuadre la semana.
+ *
+ * Los CANCELADO no entran NUNCA, ni con horas: un proyecto cancelado no debe
+ * recibir trabajo nuevo, y ese es justo el caso que se quiere impedir.
+ */
+async function proyectosParaReportar(): Promise<Opcion[]> {
+  const filas = await db.$queryRaw<{ nombre: string }[]>`
+    WITH estatus AS (
+      SELECT
+        p.codigo,
+        p.nombre,
+        COALESCE(d.status::text, p.estado) AS estado,
+        EXISTS (
+          SELECT 1 FROM actividad.hora h
+           WHERE h.proyecto_codigo = p.codigo
+             AND h.fecha > CURRENT_DATE - 60
+        ) AS reciente
+      FROM core.proyecto p
+      LEFT JOIN deal."Project" d ON d.proyecto_codigo = p.codigo
+    )
+    -- DISTINCT porque hay cuatro proyectos dados de alta dos veces con el
+    -- mismo nombre y códigos distintos: sin esto salían repetidos en la
+    -- lista y no habría forma de saber cuál elegir.
+    SELECT DISTINCT nombre FROM estatus
+     WHERE estado <> 'CANCELADO'
+       AND (estado IN ('ACTIVO', 'PAUSADO', 'EN_PAUSA') OR reciente)
+     ORDER BY nombre
+  `;
+
+  // La pantalla solo necesita el nombre: `parent` y `extra` son del catálogo
+  // de entregables, que sí los usa.
+  return filas.map((f) => ({ value: f.nombre, parent: "", extra: null }));
 }
 
 /**
