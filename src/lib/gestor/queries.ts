@@ -75,7 +75,10 @@ export async function catalogosActividad(): Promise<{
  *   1. `deal."Project".status` MANDA. Es donde se administra de verdad: hay un
  *      módulo en el Deal Engine para moverlo, y es lo único que alguien
  *      mantiene.
- *   2. Si el proyecto no está en `deal` vale `core.proyecto.estado`. Ahí viven
+ *   2. Un proyecto que SOLO está en `deal` —recién creado, sin fila todavía
+ *      en `core.proyecto`— entra igual con su propio estatus. Activarlo en el
+ *      Deal Engine basta para poder reportarle horas.
+ *   3. Si el proyecto no está en `deal` vale `core.proyecto.estado`. Ahí viven
  *      los internos —AUSENCIAS, RECURSOS HUMANOS, MARKETING, CAPACITACIONES—
  *      que nunca fueron una venta y por eso nunca pasaron por el Deal Engine.
  *      Son veintitrés proyectos con más de tres mil horas: filtrar solo por
@@ -92,8 +95,8 @@ export async function catalogosActividad(): Promise<{
 async function proyectosParaReportar(): Promise<Opcion[]> {
   const filas = await db.$queryRaw<{ nombre: string }[]>`
     WITH estatus AS (
+      -- Lo que vive en core, con el estatus de deal cuando lo tiene.
       SELECT
-        p.codigo,
         p.nombre,
         COALESCE(d.status::text, p.estado) AS estado,
         EXISTS (
@@ -103,10 +106,31 @@ async function proyectosParaReportar(): Promise<Opcion[]> {
         ) AS reciente
       FROM core.proyecto p
       LEFT JOIN deal."Project" d ON d.proyecto_codigo = p.codigo
+
+      UNION ALL
+
+      /*
+       * Y lo que SOLO está en deal.
+       *
+       * Un proyecto recién creado en el Deal Engine no tiene todavía fila en
+       * core.proyecto: el puente proyecto_codigo lo rellena la migración,
+       * no el alta. Sin esta mitad, activar un proyecto nuevo no lo hacía
+       * elegible hasta que alguien bajara los datos a mano —que es la misma
+       * trampa que tenía el catálogo viejo—.
+       *
+       * No se les pregunta por horas recientes: si no existen en core, no hay
+       * horas colgando de ellos.
+       */
+      SELECT d.name, d.status::text, false
+        FROM deal."Project" d
+       WHERE NOT EXISTS (
+         SELECT 1 FROM core.proyecto p WHERE p.codigo = d.proyecto_codigo
+       )
     )
-    -- DISTINCT porque hay cuatro proyectos dados de alta dos veces con el
-    -- mismo nombre y códigos distintos: sin esto salían repetidos en la
-    -- lista y no habría forma de saber cuál elegir.
+    -- DISTINCT porque hay proyectos dados de alta dos veces con el mismo
+    -- nombre y códigos distintos —y porque un mismo proyecto puede venir por
+    -- las dos mitades—: sin esto salían repetidos y no habría forma de saber
+    -- cuál elegir.
     SELECT DISTINCT nombre FROM estatus
      WHERE estado <> 'CANCELADO'
        AND (estado IN ('ACTIVO', 'PAUSADO', 'EN_PAUSA') OR reciente)
