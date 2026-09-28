@@ -27,3 +27,17 @@ export const SIN_COBERTURA: readonly string[] = ["HOME OFFICE"];
 export function exigeCobertura(tipo: string): boolean {
   return !SIN_COBERTURA.includes(tipo.trim().toUpperCase());
 }
+
+/**
+ * Lo que se guarda cuando no hay a quién dejarle nada.
+ *
+ * Hay ausencias que no dejan trabajo pendiente: una tarde suelta, un día en
+ * que no se espera nada de esa persona. Sin esta salida, el campo obligatorio
+ * empujaba a poner un nombre cualquiera con tal de poder enviar, y un backup
+ * inventado es peor que ninguno —quien lo lea irá a molestar a alguien que no
+ * sabe nada—.
+ *
+ * Va en mayúsculas y como texto fijo para que se distinga de un nombre y se
+ * pueda contar aparte si algún día interesa.
+ */
+export const SIN_BACKUP = "NO APLICA";

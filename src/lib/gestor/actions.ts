@@ -20,7 +20,7 @@ import {
 } from "@/lib/google/sincronizar";
 import { exigirSeccion } from "@/modules/identidad/infrastructure/wiring";
 import { padronActivo } from "@/lib/gestor/queries";
-import { exigeCobertura } from "@/lib/trabajo/cobertura";
+import { exigeCobertura, SIN_BACKUP } from "@/lib/trabajo/cobertura";
 import {
   aFechaDia,
   deFechaDia,
@@ -532,13 +532,26 @@ export async function solicitarAusencia(
     plantilla.map((c) => [c.nombre.trim().toUpperCase(), c.nombre]),
   );
 
-  const elegidos = String(form.get("backup") ?? "")
-    .split("·")
-    .map((n) => porNombre.get(n.trim().toUpperCase()))
-    .filter((n): n is string => Boolean(n));
+  const crudo = String(form.get("backup") ?? "").trim();
 
-  // Sin repetidos y con un tope, que es lo que ofrece la pantalla.
-  const backup = [...new Set(elegidos)].slice(0, 5).join(" · ") || null;
+  /*
+   * "NO APLICA" es una respuesta, no un nombre.
+   *
+   * Quien no deja trabajo a nadie tiene que poder decirlo. Si no, el campo
+   * obligatorio le empuja a escribir un nombre cualquiera, y un backup
+   * inventado manda a alguien a preguntar a quien no sabe nada.
+   */
+  const backup =
+    crudo.toUpperCase() === SIN_BACKUP
+      ? SIN_BACKUP
+      : (() => {
+          const elegidos = crudo
+            .split("·")
+            .map((n) => porNombre.get(n.trim().toUpperCase()))
+            .filter((n): n is string => Boolean(n));
+          // Sin repetidos y con un tope, que es lo que ofrece la pantalla.
+          return [...new Set(elegidos)].slice(0, 5).join(" · ") || null;
+        })();
 
   const dispCruda = String(form.get("availability") ?? "").trim().toUpperCase();
   const disponibilidad = ["NULA", "MENSAJES", "URGENCIAS", "OTRA"].includes(

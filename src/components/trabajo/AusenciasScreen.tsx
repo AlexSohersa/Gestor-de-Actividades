@@ -19,7 +19,7 @@ import type { AbsenceView } from "@/lib/trabajo/queries";
 import type { SaldoVacaciones } from "@/lib/gestor/queries";
 import { CvPortal } from "@/components/conexion/CvPortal";
 import { CvComboMulti } from "@/components/conexion/CvComboMulti";
-import { exigeCobertura } from "@/lib/trabajo/cobertura";
+import { exigeCobertura, SIN_BACKUP } from "@/lib/trabajo/cobertura";
 import { ausenciasDelMes } from "@/lib/trabajo/acciones-calendario";
 
 /**
@@ -2571,6 +2571,8 @@ function FormSolicitud({
    * localizable como cualquier día.
    */
   const pideCobertura = exigeCobertura(tipo);
+  /** Se marcó "no aplica": no hay nadie a quien dejarle nada. */
+  const sinBackup = backup.length === 1 && backup[0] === SIN_BACKUP;
   const backupOk = !pideCobertura || backup.length > 0;
   const dispOk =
     !pideCobertura ||
@@ -3264,6 +3266,7 @@ function FormSolicitud({
                 para la misma persona, y luego no hay forma de saber a quién
                 buscar. Se eligen de la lista, uno o varios.
               */}
+              {!sinBackup && (
               <CvComboMulti
                 name="backup"
                 opciones={padron}
@@ -3273,6 +3276,43 @@ function FormSolicitud({
                 maximo={5}
                 ariaLabel="Quién te cubre"
               />
+              )}
+
+              {/*
+                "No aplica", para cuando de verdad no hay a quien dejarle nada.
+
+                Sin esta salida, el campo obligatorio empuja a poner un nombre
+                cualquiera con tal de enviar —y un backup inventado manda a
+                alguien a preguntar a quien no sabe nada—.
+              */}
+              <button
+                type="button"
+                onClick={() =>
+                  setBackup(sinBackup ? [] : [SIN_BACKUP])
+                }
+                aria-pressed={sinBackup}
+                className="cv-btn"
+                style={{
+                  marginTop: sinBackup ? 0 : 7,
+                  border: `1px solid ${sinBackup ? "var(--cv-navy)" : "var(--cv-line)"}`,
+                  background: sinBackup ? "var(--cv-navy)" : "#fff",
+                  color: sinBackup ? "#fff" : "var(--cv-ink-3)",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  padding: "7px 13px",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                }}
+              >
+                {sinBackup ? "✓ No aplica — nadie me cubre" : "No aplica"}
+              </button>
+
+              {/* Con "no aplica" el campo desaparece, así que el valor viaja
+                  aparte: sin esto el formulario llegaría vacío. */}
+              {sinBackup && (
+                <input type="hidden" name="backup" value={SIN_BACKUP} />
+              )}
+
               <span
                 style={{
                   display: "block",
@@ -3281,9 +3321,11 @@ function FormSolicitud({
                   marginTop: 5,
                 }}
               >
-                {pideCobertura
-                  ? "Puede ser más de una persona. Es quien atiende tus pendientes mientras no estás."
-                  : "Opcional en home office: sigues trabajando tu jornada."}
+                {!pideCobertura
+                  ? "Opcional en home office: sigues trabajando tu jornada."
+                  : sinBackup
+                    ? "No dejas pendientes a nadie."
+                    : "Puede ser más de una persona, o «No aplica» si no dejas pendientes."}
               </span>
             </div>
 
