@@ -137,6 +137,26 @@ export async function sincronizacionActiva(): Promise<boolean> {
   return (await credencialesGoogle()) !== null;
 }
 
+/**
+ * Lo que va en «¿AUTORIZADO?» y «¿PAGADO?» de BDD PERMISOS.
+ *
+ * No es lo mismo autorizar que pagar, y la hoja lo distingue en dos columnas.
+ * Escribir "PAGADO" en ambas marcaba como pagados permisos que no lo son
+ * —un PERMISO SIN GOCE DE SUELDO aparecía pagado en nómina—.
+ *
+ * Los valores salen de lo que la hoja lleva escrito desde siempre: solo
+ * vacaciones y permiso CON goce se pagan; el resto se autoriza sin pago.
+ * Un rechazo es "NO AUTORIZADO" en las dos, como ya estaba.
+ */
+const TIPOS_PAGADOS = ["VACACIONES", "PERMISO CON GOCE DE SUELDO"];
+
+function textoDeDecision(tipo: string, estado: string): string {
+  if (estado !== "APROBADA") return "NO AUTORIZADO";
+  return TIPOS_PAGADOS.includes(tipo.trim().toUpperCase())
+    ? "PAGADO"
+    : "AUTORIZADO SIN PAGO";
+}
+
 async function anexar(
   libro: string,
   hoja: string,
@@ -275,9 +295,17 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         where: { sheetSync: { startsWith: "env-" }, actualizadoEn: { lt: limite } },
         data: { sheetSync: "reenviar" },
       }),
+      /*
+       * Las AUSENCIAS rescatadas quedan como "reenviar", no "pendiente".
+       *
+       * Igual que las horas: una corrida pudo morir DESPUÉS de anexar a la
+       * hoja y antes de marcar, y reenviarla a ciegas la duplica allá. Le
+       * pasó al home office de Abraham del 2 de octubre: su solicitud
+       * aprobada acabó dos veces en BDD PERMISOS.
+       */
       db.ausencia.updateMany({
         where: { sheetSync: { startsWith: "env-" }, actualizadoEn: { lt: limite } },
-        data: { sheetSync: "pendiente" },
+        data: { sheetSync: "reenviar" },
       }),
       db.ticket.updateMany({
         where: { sheetSync: { startsWith: "env-" }, actualizadoEn: { lt: limite } },
@@ -431,19 +459,35 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
      * —pasó con 680 permisos—. El estado "hoja" ya lo evita; esto lo evita
      * también cuando el estado está mal.
      */
+    // Cuáles vienen de una corrida muerta: a esas se les verifica la hoja.
+    const ausSospechosas = new Set(
+      (
+        await db.ausencia.findMany({
+          where: { sheetSync: "reenviar" },
+          select: { id: true },
+        })
+      ).map((a) => a.id),
+    );
+
     await db.ausencia.updateMany({
       where: {
-        sheetSync: "pendiente",
+        sheetSync: { in: ["pendiente", "reenviar"] },
         estado: { in: ["APROBADA", "RECHAZADA"] },
       },
       data: { sheetSync: marca },
     });
-    aDevolver.push(() =>
-      db.ausencia.updateMany({
+    aDevolver.push(async () => {
+      // Cada una vuelve a SU estado: perder la marca de sospechosa haría que
+      // el siguiente intento la anexara a ciegas.
+      await db.ausencia.updateMany({
+        where: { sheetSync: marca, id: { in: [...ausSospechosas] } },
+        data: { sheetSync: "reenviar" },
+      });
+      await db.ausencia.updateMany({
         where: { sheetSync: marca },
         data: { sheetSync: "pendiente" },
-      }),
-    );
+      });
+    });
 
     const ausencias = await db.ausencia.findMany({
       where: { sheetSync: marca },
@@ -473,11 +517,14 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
       // UNA FILA POR DÍA HÁBIL, como la hoja de siempre: una ausencia de tres
       // días son tres renglones. Los tableros cuentan renglones, no rangos.
       const filas: (string | number)[][] = [];
+      /* De qué solicitud salió cada renglón: solo las sospechosas se verifican
+         contra la hoja, las demás se anexan sin leer nada. */
+      const sospechosaEnFila = new WeakMap<(string | number)[], boolean>();
 
       for (const a of ausencias) {
         const jornada = Number(a.persona.horasDia);
         const horas = a.horas === null ? jornada : Number(a.horas);
-        const decision = a.estado === "APROBADA" ? "PAGADO" : "NO AUTORIZADO";
+        const decision = textoDeDecision(a.tipo, a.estado);
 
         /*
          * El PERIODO de cada día, no el mismo para todos.
@@ -503,7 +550,7 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         };
 
         for (const dia of diasHabilesEntre(a.fechaInicio, a.fechaFin)) {
-          filas.push([
+          const fila = [
             nombreDeHoja(a.persona),
             a.tipo,
             fechaMX(dia),
@@ -513,11 +560,70 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
             decision,
             a.destinatario ? nombreDeHoja(a.destinatario) : "",
             periodoDelDia(),
-          ]);
+          ];
+          sospechosaEnFila.set(fila, ausSospechosas.has(a.id));
+          filas.push(fila);
         }
       }
 
-      await anexar(BDD_MAESTRA, HOJAS.permisos, filas);
+      /*
+       * Las sospechosas de reenvío se buscan en la hoja ANTES de anexar.
+       *
+       * Si la corrida muerta alcanzó a escribir sus renglones, ya están allá y
+       * volver a mandarlos los duplica. Le pasó al home office de Abraham del
+       * 2 de octubre: su solicitud aprobada acabó en las filas 1153 y 1154, y
+       * el renglón del rechazo posterior quedó tapado por la copia.
+       *
+       * Se compara RENGLÓN por RENGLÓN, no solicitud por solicitud: una
+       * ausencia de tres días son tres filas, y una corrida pudo morir a la
+       * mitad. Y se incluye la decisión en la llave, porque la misma persona
+       * puede pedir el mismo día dos veces —una aprobada y otra rechazada— y
+       * son dos renglones legítimos que no deben taparse entre sí.
+       */
+      let aAnexar = filas;
+      if (ausencias.some((a) => ausSospechosas.has(a.id))) {
+        const filasHoja = await leerRango(BDD_MAESTRA, `${HOJAS.permisos}!A2:I`);
+        const norm = (t: string) => t.trim().toUpperCase().replace(/\s+/g, " ");
+        const llave = (
+          persona: string,
+          tipo: string,
+          dia: string,
+          decision: string,
+        ) => [norm(persona), norm(tipo), dia, norm(decision)].join("|");
+
+        const enHoja = new Map<string, number>();
+        // Solo la cola: los anexos van siempre al final.
+        for (const f of filasHoja.slice(-400)) {
+          const k = llave(
+            aTexto(f[0]) ?? "",
+            aTexto(f[1]) ?? "",
+            aDia(f[2]) ?? "",
+            aTexto(f[5]) ?? "",
+          );
+          enHoja.set(k, (enHoja.get(k) ?? 0) + 1);
+        }
+
+        aAnexar = filas.filter((f) => {
+          if (!sospechosaEnFila.get(f)) return true;
+          const k = llave(
+            String(f[0]),
+            String(f[1]),
+            aDia(f[2]) ?? "",
+            String(f[5]),
+          );
+          const quedan = enHoja.get(k) ?? 0;
+          if (quedan > 0) {
+            // Ya está allá: la corrida muerta sí alcanzó a escribirla.
+            enHoja.set(k, quedan - 1);
+            return false;
+          }
+          return true;
+        });
+      }
+
+      if (aAnexar.length > 0) {
+        await anexar(BDD_MAESTRA, HOJAS.permisos, aAnexar);
+      }
 
       /*
        * Las ausencias APROBADAS van TAMBIÉN a la hoja de actividad.

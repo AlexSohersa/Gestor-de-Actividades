@@ -131,7 +131,7 @@ export function SemanalScreen({ d }: { d: ReporteSemanal }) {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           {d.filas.map((f) => (
-            <Fila key={f.proyecto} f={f} />
+            <Fila key={f.codigo || f.proyecto} f={f} />
           ))}
         </div>
       </div>

@@ -19,6 +19,15 @@ import { db } from "@/lib/db/client";
 export const DIAS_REPORTE = 8;
 
 export type FilaSemanal = {
+  /*
+   * El código, que es lo único único.
+   *
+   * Hay proyectos distintos con el MISMO nombre —dos de Cuadra Urbanismo se
+   * llaman igual y solo cambian de código—, así que el nombre no sirve para
+   * identificar una fila: usándolo como clave de React, una de las dos se
+   * omitía del reporte y las horas de ese proyecto no se veían.
+   */
+  codigo: string;
   proyecto: string;
   cliente: string | null;
   /** Horas reportadas en la ventana del reporte. */
@@ -159,6 +168,7 @@ export const reporteSemanal = cache(async function reporteSemanal(
       const disponibles = cot > 0 ? cot - registradas : null;
 
       return {
+        codigo,
         // Sin nombre en el padrón se muestra el código: perder la fila sería
         // esconder horas que alguien reportó de verdad.
         proyecto: p?.nombre ?? codigo,
