@@ -70,15 +70,25 @@ function destinatarios(): string[] {
  * cualquiera que adivine la dirección puede lanzar el envío a todo el mundo
  * cuantas veces quiera.
  *
- * Vercel firma sus llamadas con `CRON_SECRET`; si no está configurado, solo se
- * acepta la cabecera propia de Vercel, que no se puede falsificar desde fuera.
+ * Se aceptan DOS pruebas de identidad, y hacen falta las dos:
+ *
+ *   · `Authorization: Bearer <CRON_SECRET>`, que Vercel añade solo cuando esa
+ *     variable existe. Es la única que un extraño no puede fabricar.
+ *   · `x-vercel-cron-schedule`, la expresión que disparó la llamada. La pone
+ *     la plataforma y no viaja desde fuera, así que sirve mientras no haya
+ *     secreto configurado.
+ *
+ * Antes se exigía `x-vercel-cron`, una cabecera que Vercel NO envía: el cron
+ * del 28 de septiembre llegó con `User-Agent: vercel-cron/1.0` y se rechazó
+ * con un 401 sin llegar a mandar el reporte. Nadie se entera de un envío que
+ * no ocurre, así que el fallo habría pasado desapercibido semanas.
  */
 function autorizada(req: Request): boolean {
   const secreto = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
 
   if (secreto) return auth === `Bearer ${secreto}`;
-  return req.headers.get("x-vercel-cron") !== null;
+  return req.headers.get("x-vercel-cron-schedule") !== null;
 }
 
 /** La hora y el día de hoy en México, que es donde se decide. */

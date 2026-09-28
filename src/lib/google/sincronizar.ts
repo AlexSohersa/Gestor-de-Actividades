@@ -90,19 +90,35 @@ function diaComparable(v: unknown): number | null {
  *
  * Si la fila no aparece, se añade al final: nunca se sobrescribe nada ajeno.
  */
-async function escribirChecada(fila: (string | number)[]) {
+async function escribirChecada(
+  fila: (string | number)[],
+  /*
+   * El índice A:C de la hoja, leído UNA vez por corrida.
+   *
+   * Sin esto, cada checada volvía a leer las 2 326 filas para buscar la suya:
+   * con 34 pendientes eran 34 lecturas y 34 escrituras seguidas, y la función
+   * tardaba 17 segundos —lo bastante para que Google devolviera "cuota
+   * excedida" a media cola—. Se lee una vez fuera del bucle y se pasa aquí.
+   *
+   * Sin índice se lee sobre la marcha: así la función sigue sirviendo suelta.
+   */
+  indice?: (string | number)[][],
+) {
   const s = await clienteEscritura();
   if (!s) throw new Error("Sin credenciales de Google para escribir.");
 
   const [numero, nombre, fecha] = fila;
 
-  const actual = await s.spreadsheets.values.get({
-    spreadsheetId: LIBRO_CHECK_HO,
-    range: `${HOJA_CHECK_HO}!A:C`,
-    // Los valores como se ven en la hoja, no la fórmula ni el número de serie.
-    valueRenderOption: "FORMATTED_VALUE",
-  });
-  const filas = actual.data.values ?? [];
+  let filas = indice;
+  if (!filas) {
+    const actual = await s.spreadsheets.values.get({
+      spreadsheetId: LIBRO_CHECK_HO,
+      range: `${HOJA_CHECK_HO}!A:C`,
+      // Los valores como se ven en la hoja, no la fórmula ni el número de serie.
+      valueRenderOption: "FORMATTED_VALUE",
+    });
+    filas = (actual.data.values ?? []) as (string | number)[][];
+  }
 
   const igual = (a: unknown, b: unknown) =>
     String(a ?? "").trim().toUpperCase() === String(b ?? "").trim().toUpperCase();
@@ -146,6 +162,15 @@ async function escribirChecada(fila: (string | number)[]) {
   }
 
   await anexar(LIBRO_CHECK_HO, HOJA_CHECK_HO, [fila]);
+
+  /*
+   * El índice en memoria crece con la fila recién añadida.
+   *
+   * Sin esto, la siguiente checada de la misma corrida buscaría sobre un
+   * índice viejo y no encontraría la fila que acaba de crearse: al marcar su
+   * salida la añadiría otra vez en lugar de actualizarla.
+   */
+  indice?.push([numero, nombre, fecha]);
 }
 
 /**
@@ -725,6 +750,16 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
     });
 
     if (checadas.length > 0) {
+      // El índice de la hoja, UNA sola vez para todo el lote.
+      const cli = await clienteEscritura();
+      if (!cli) throw new Error("Sin credenciales de Google para escribir.");
+      const leido = await cli.spreadsheets.values.get({
+        spreadsheetId: LIBRO_CHECK_HO,
+        range: `${HOJA_CHECK_HO}!A:C`,
+        valueRenderOption: "FORMATTED_VALUE",
+      });
+      const indice = (leido.data.values ?? []) as (string | number)[][];
+
       // Una por una, no en bloque: cada una busca su fila del día para
       // actualizarla, y un `append` masivo duplicaría las que ya están.
       for (const c of checadas) {
@@ -747,7 +782,7 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
           // tablero que mire la columna E dejaría de cuadrar.
           horaMX(c.comidaInicio),
           horaMX(c.comidaFin),
-        ]);
+        ], indice);
       }
 
       /*
