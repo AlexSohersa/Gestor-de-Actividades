@@ -31,6 +31,8 @@ const SELECCION = {
   activo: true,
   esAdmin: true,
   correos: { where: { principal: true }, select: { correo: true }, take: 1 },
+  // Solo para saber SI existe: el token en sí no sale de la capa de datos.
+  googleRefresco: true,
   roles: {
     where: { herramientaClave: HERRAMIENTA },
     select: {
@@ -57,6 +59,7 @@ type FilaPersona = {
   activo: boolean;
   esAdmin: boolean;
   correos: { correo: string }[];
+  googleRefresco: string | null;
   roles: {
     rolClave: string;
     seccionesOcultas: string[];
@@ -98,6 +101,7 @@ function aDominio(f: FilaPersona): Persona {
     correo: f.correos[0]?.correo ?? null,
     rol: (asignacion?.rolClave as Rol) ?? "COLABORADOR",
     seccionesOcultas: soloSecciones(asignacion?.seccionesOcultas ?? []),
+    tieneGoogle: Boolean(f.googleRefresco),
     // Sin fila de permisos todavía: no ve los tickets ajenos. El lado seguro
     // por el que equivocarse es una bandeja sin atender, no una fuga.
     veMantenimiento: asignacion?.veMantenimiento ?? false,

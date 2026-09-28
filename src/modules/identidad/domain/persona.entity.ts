@@ -77,6 +77,20 @@ export interface Persona {
   seccionesOcultas: Seccion[];
 
   /*
+   * ¿Concedió permisos de Google a ESTA herramienta?
+   *
+   * Es el `refresh_token`, y solo existe si esa persona pasó por la pantalla
+   * de consentimiento del Gestor. Quien entra desde el Digital Core llega con
+   * la sesión ya hecha —las cookies se comparten en `.sohersabim.com`— y
+   * Google nunca le pide nada, así que se queda sin token y sus filas no
+   * pueden escribirse con su propia cuenta.
+   *
+   * No se expone el token: solo si lo hay. La pantalla lo usa para ofrecer la
+   * reconexión, y nada más necesita saberlo.
+   */
+  tieneGoogle: boolean;
+
+  /*
    * Mantenimiento TI, en dos permisos y no en uno.
    *
    * Ver la bandeja completa y poder cerrar tickets son cosas distintas: a

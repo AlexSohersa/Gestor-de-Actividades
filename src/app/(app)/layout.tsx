@@ -7,6 +7,7 @@ import {
 import { veToda } from "@/modules/identidad/domain/persona.entity";
 import { estadoDeAcceso, urlDelPortal } from "@/lib/portal/acceso";
 import { SinAcceso } from "@/components/SinAcceso";
+import { AvisoGoogle } from "@/components/conexion/AvisoGoogle";
 
 /**
  * El andamiaje de la herramienta: barra superior, menú lateral y lienzo.
@@ -48,6 +49,16 @@ export default async function AppLayout({
         email={persona.correo}
         image={persona.foto}
       />
+
+      {/*
+        Quien nunca concedió permisos a Google lo ve aquí.
+
+        La sesión viaja entre herramientas, así que quien llega del Digital Core
+        nunca ve la pantalla de consentimiento del Gestor —y sin ella Google no
+        entrega el `refresh_token`—. Sus datos se guardan igual; lo que no puede
+        es escribir en las hojas con su propia cuenta.
+      */}
+      {!persona.tieneGoogle && <AvisoGoogle />}
 
       {/* `minWidth: 0` permite que los hijos se encojan: sin él, un hijo ancho
           impide que el flex reparta bien el espacio. */}
