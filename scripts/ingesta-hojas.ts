@@ -446,6 +446,37 @@ async function ingestarHoras(padron: Padron) {
     cuenta.set(k, (cuenta.get(k) ?? 0) + 1);
   }
 
+  /*
+   * Lo capturado EN LA APP se salta SIEMPRE, sin contar copias.
+   *
+   * La app escribe cada captura a la hoja, y su sincronizador puede llegar a
+   * escribirla DOS veces —pasó el día del lanzamiento: una corrida murió
+   * después de anexar y antes de marcar, y el rescate la anexó de nuevo—.
+   * Con el contador de arriba, la primera copia se reconocía y la segunda se
+   * importaba como fila nueva: diez horas duplicadas.
+   *
+   * Para lo nacido en la app, la base ES la fuente y la hoja solo un reflejo:
+   * cualquier fila de la hoja que coincida con una captura de la app es ese
+   * reflejo —las veces que sea— y no debe importarse jamás.
+   */
+  const deLaApp = new Set(
+    (
+      await db.hora.findMany({
+        where: { origen: "app" },
+        select: {
+          personaId: true,
+          fecha: true,
+          horas: true,
+          proyectoCodigo: true,
+          proyectoTexto: true,
+          comentario: true,
+          tipo: true,
+          entregableTexto: true,
+        },
+      })
+    ).map(huella),
+  );
+
   const nuevas: typeof aInsertar = [];
   let conocidas = 0;
 
@@ -455,6 +486,10 @@ async function ingestarHoras(padron: Padron) {
       continue;
     }
     const k = huella(h);
+    if (deLaApp.has(k)) {
+      conocidas++;
+      continue;
+    }
     const quedan = cuenta.get(k) ?? 0;
     if (quedan > 0) {
       cuenta.set(k, quedan - 1);
