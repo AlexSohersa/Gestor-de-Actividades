@@ -81,99 +81,6 @@ function diaComparable(v: unknown): number | null {
 }
 
 /**
- * Escribe la checada del día: ACTUALIZA su fila si ya está, o la añade.
- *
- * La entrada sube en cuanto se marca, y la salida llega horas después sobre la
- * MISMA checada. Con `append` a secas salían dos filas del mismo día —una con
- * la entrada sola y otra con las dos horas—, que es justo lo que hay que
- * evitar.
- *
- * Si la fila no aparece, se añade al final: nunca se sobrescribe nada ajeno.
- */
-async function escribirChecada(
-  fila: (string | number)[],
-  /*
-   * El índice A:C de la hoja, leído UNA vez por corrida.
-   *
-   * Sin esto, cada checada volvía a leer las 2 326 filas para buscar la suya:
-   * con 34 pendientes eran 34 lecturas y 34 escrituras seguidas, y la función
-   * tardaba 17 segundos —lo bastante para que Google devolviera "cuota
-   * excedida" a media cola—. Se lee una vez fuera del bucle y se pasa aquí.
-   *
-   * Sin índice se lee sobre la marcha: así la función sigue sirviendo suelta.
-   */
-  indice?: (string | number)[][],
-) {
-  const s = await clienteEscritura();
-  if (!s) throw new Error("Sin credenciales de Google para escribir.");
-
-  const [numero, nombre, fecha] = fila;
-
-  let filas = indice;
-  if (!filas) {
-    const actual = await s.spreadsheets.values.get({
-      spreadsheetId: LIBRO_CHECK_HO,
-      range: `${HOJA_CHECK_HO}!A:C`,
-      // Los valores como se ven en la hoja, no la fórmula ni el número de serie.
-      valueRenderOption: "FORMATTED_VALUE",
-    });
-    filas = (actual.data.values ?? []) as (string | number)[][];
-  }
-
-  const igual = (a: unknown, b: unknown) =>
-    String(a ?? "").trim().toUpperCase() === String(b ?? "").trim().toUpperCase();
-
-  const dia = diaComparable(fecha);
-
-  /*
-   * Se compara por número de colaborador cuando lo hay, y por nombre cuando
-   * no: diez personas del equipo no tienen número, y compararlas solo por esa
-   * columna vacía haría que se pisaran entre ellas el mismo día.
-   *
-   * De abajo hacia arriba: si un día quedó duplicado por algo anterior, se
-   * actualiza el último, que es el que la gente ve como bueno.
-   */
-  const conNumero = String(numero ?? "").trim() !== "";
-  let encontrada = -1;
-  for (let i = filas.length - 1; i >= 0; i--) {
-    const f = filas[i] ?? [];
-    if (dia === null || diaComparable(f[2]) !== dia) continue;
-    const mismaPersona = conNumero
-      ? igual(f[0], numero)
-      : String(f[0] ?? "").trim() === "" && igual(f[1], nombre);
-    if (mismaPersona) {
-      encontrada = i;
-      break;
-    }
-  }
-
-  if (encontrada >= 0) {
-    // `encontrada` es índice base 0; las filas de la hoja empiezan en 1.
-    await s.spreadsheets.values.update({
-      spreadsheetId: LIBRO_CHECK_HO,
-      // Hasta H: A–F es lo de siempre y G–H las dos horas de comida. El rango
-      // tiene que cubrir la fila entera o las columnas nuevas nunca se
-      // sobrescriben cuando alguien marca su regreso.
-      range: `${HOJA_CHECK_HO}!A${encontrada + 1}:H${encontrada + 1}`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [fila] },
-    });
-    return;
-  }
-
-  await anexar(LIBRO_CHECK_HO, HOJA_CHECK_HO, [fila]);
-
-  /*
-   * El índice en memoria crece con la fila recién añadida.
-   *
-   * Sin esto, la siguiente checada de la misma corrida buscaría sobre un
-   * índice viejo y no encontraría la fila que acaba de crearse: al marcar su
-   * salida la añadiría otra vez en lugar de actualizarla.
-   */
-  indice?.push([numero, nombre, fecha]);
-}
-
-/**
  * El nombre con el que esa persona aparece EN LAS HOJAS.
  *
  * El padrón guarda el nombre legal completo ("ALEJANDRO OROZCO ALONSO") y las
@@ -760,10 +667,29 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
       });
       const indice = (leido.data.values ?? []) as (string | number)[][];
 
-      // Una por una, no en bloque: cada una busca su fila del día para
-      // actualizarla, y un `append` masivo duplicaría las que ya están.
+      /*
+       * TODAS las filas en UNA escritura, no una llamada por checada.
+       *
+       * Google permite 60 escrituras por minuto y usuario. Con 37 checadas en
+       * cola, cada vez que alguien marcaba se gastaban 37 de golpe y la
+       * siguiente persona se topaba con "Quota exceeded" —pasó el 28 de
+       * septiembre—. `batchUpdate` manda todos los rangos juntos y cuenta
+       * como una sola.
+       *
+       * Se sigue buscando la fila de cada quien en el índice, porque el
+       * registro del día se ACTUALIZA: quien marca su comida tiene que
+       * escribir sobre su propio renglón, no crear otro.
+       */
+      const igual = (a: unknown, b: unknown) =>
+        String(a ?? "").trim().toUpperCase() ===
+        String(b ?? "").trim().toUpperCase();
+
+      const actualizaciones: { range: string; values: (string | number)[][] }[] =
+        [];
+      const nuevas: (string | number)[][] = [];
+
       for (const c of checadas) {
-        await escribirChecada([
+        const fila: (string | number)[] = [
           c.persona.numero ?? "",
           nombreDeHoja(c.persona),
           fechaMX(c.fecha),
@@ -782,27 +708,71 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
           // tablero que mire la columna E dejaría de cuadrar.
           horaMX(c.comidaInicio),
           horaMX(c.comidaFin),
-        ], indice);
+        ];
+
+        const dia = diaComparable(fila[2]);
+        const conNumero = String(fila[0]).trim() !== "";
+
+        // De abajo hacia arriba: si un día quedó duplicado por algo anterior,
+        // se actualiza el último, que es el que la gente ve como bueno.
+        let encontrada = -1;
+        for (let i = indice.length - 1; i >= 0; i--) {
+          const f = indice[i] ?? [];
+          if (dia === null || diaComparable(f[2]) !== dia) continue;
+          const misma = conNumero
+            ? igual(f[0], fila[0])
+            : String(f[0] ?? "").trim() === "" && igual(f[1], fila[1]);
+          if (misma) {
+            encontrada = i;
+            break;
+          }
+        }
+
+        if (encontrada >= 0) {
+          actualizaciones.push({
+            range: `${HOJA_CHECK_HO}!A${encontrada + 1}:H${encontrada + 1}`,
+            values: [fila],
+          });
+        } else {
+          nuevas.push(fila);
+          // El índice crece con la fila que se va a añadir: si no, dos
+          // checadas nuevas de la misma persona se pisarían la posición.
+          indice.push([fila[0], fila[1], fila[2]]);
+        }
+      }
+
+      if (actualizaciones.length > 0) {
+        await cli.spreadsheets.values.batchUpdate({
+          spreadsheetId: LIBRO_CHECK_HO,
+          requestBody: {
+            valueInputOption: "USER_ENTERED",
+            data: actualizaciones,
+          },
+        });
+      }
+
+      // Las nuevas, en un solo `append`: también cuenta como una escritura.
+      if (nuevas.length > 0) {
+        await anexar(LIBRO_CHECK_HO, HOJA_CHECK_HO, nuevas);
       }
 
       /*
-       * Vuelve a "pendiente" mientras el día siga abierto.
+       * Escrita es escrita: TODAS pasan a "ok", cerradas o no.
        *
-       * La fila ya está en la hoja con la entrada, pero al marcar la salida
-       * hay que volver a escribirla. Marcarla "ok" ahora la sacaría de la cola
-       * y la salida no llegaría nunca.
+       * Antes las jornadas sin salida volvían a "pendiente" para que la salida
+       * llegara más tarde. El efecto era que la cola no se vaciaba en todo el
+       * día: a media mañana había 37 filas ya escritas y sin cambios, y CADA
+       * marca de CADA persona las reescribía todas. Treinta y siete escrituras
+       * para un toque —de ahí el "Quota exceeded" del 28 de septiembre—.
+       *
+       * No hace falta: marcar la comida o la salida ya devuelve esa fila a
+       * "pendiente" por su cuenta (ver `checarHomeOffice`), y deshacer una
+       * marca también. La cola queda con lo que de verdad cambió, que casi
+       * siempre es UNA fila.
        */
       await db.checada.updateMany({
-        where: {
-          id: { in: checadas.filter((c) => c.salida !== null).map((c) => c.id) },
-        },
+        where: { id: { in: checadas.map((c) => c.id) } },
         data: { sheetSync: "ok" },
-      });
-      await db.checada.updateMany({
-        where: {
-          id: { in: checadas.filter((c) => c.salida === null).map((c) => c.id) },
-        },
-        data: { sheetSync: "pendiente" },
       });
       enviadas += checadas.length;
     }
