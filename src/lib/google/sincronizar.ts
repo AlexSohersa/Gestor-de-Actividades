@@ -135,7 +135,10 @@ async function escribirChecada(fila: (string | number)[]) {
     // `encontrada` es índice base 0; las filas de la hoja empiezan en 1.
     await s.spreadsheets.values.update({
       spreadsheetId: LIBRO_CHECK_HO,
-      range: `${HOJA_CHECK_HO}!A${encontrada + 1}:F${encontrada + 1}`,
+      // Hasta H: A–F es lo de siempre y G–H las dos horas de comida. El rango
+      // tiene que cubrir la fila entera o las columnas nuevas nunca se
+      // sobrescriben cuando alguien marca su regreso.
+      range: `${HOJA_CHECK_HO}!A${encontrada + 1}:H${encontrada + 1}`,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [fila] },
     });
@@ -714,6 +717,8 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         fecha: true,
         entrada: true,
         salida: true,
+        comidaInicio: true,
+        comidaFin: true,
         modalidad: true,
         persona: { select: { nombre: true, nombreUsuario: true, numero: true } },
       },
@@ -736,6 +741,12 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
             : c.modalidad === "OFICINA"
               ? "OFICINA"
               : "",
+          // G y H: la pausa de comida. Van al final y no entre IN y OUT
+          // —que sería el orden del día— porque insertarlas en medio movería
+          // OUT y la modalidad en las 2 322 filas de historial, y cualquier
+          // tablero que mire la columna E dejaría de cuadrar.
+          horaMX(c.comidaInicio),
+          horaMX(c.comidaFin),
         ]);
       }
 

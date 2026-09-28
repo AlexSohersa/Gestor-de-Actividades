@@ -270,7 +270,14 @@ export async function checarHomeOffice(
 
   await db.checada.update({
     where: { personaId_fecha: { personaId: persona.id, fecha: dia } },
-    // Solo la salida vuelve a la hoja: la comida no tiene columna propia allí.
+    /*
+     * CUALQUIER marca devuelve la fila a la cola de la hoja.
+     *
+     * Las cuatro tienen columna allá —D entrada, E salida, G y H la comida—,
+     * y la fila de ese día se reescribe entera cada vez. Así, marcar el
+     * regreso de comer DESPUÉS de la salida —porque se olvidó— también sube:
+     * la salida deja la fila en "ok", pero esta línea la vuelve a encolar.
+     */
     data: { ...campo, sheetSync: "pendiente" },
   });
 
