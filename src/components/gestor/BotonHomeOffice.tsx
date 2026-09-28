@@ -9,10 +9,12 @@ import {
   LogIn,
   LogOut,
   UtensilsCrossed,
+  X,
 } from "lucide-react";
 
 import {
   checarHomeOffice,
+  deshacerChecada,
   type EstadoHO,
   type Marca,
   type Modalidad,
@@ -69,8 +71,26 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
    * primera marca que se registre, sea la que sea. Así quien empieza por su
    * comida no acaba con una entrada que nunca hizo.
    */
+  /** La marca cuyo borrado se está confirmando, si alguna. */
+  const [confirmando, setConfirmando] = useState<Marca | null>(null);
+
   const elegirDonde = (m: Modalidad) =>
     setLocal((v) => ({ ...v, modalidad: m }));
+
+  /*
+   * Quitar una marca puesta por error.
+   *
+   * Se confirma antes: borrarla toca la base Y la hoja, y un clic de más no
+   * debería deshacer un registro sin avisar.
+   */
+  const deshacer = (marca: Marca) => {
+    startTransition(async () => {
+      const r = await deshacerChecada(marca);
+      setConfirmando(null);
+      if (!r.ok) return;
+      setLocal((v) => ({ ...v, [marca]: null }));
+    });
+  };
 
   /*
    * ¿Se puede deshacer la elección de dónde?
@@ -367,9 +387,21 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                       // cuando se acuerde.
                       const toca = local.siguiente === marca && !hecho;
 
+                      const enDuda = confirmando === marca;
+
                       return (
+                        <div key={marca}>
+                        {/*
+                          La X va FUERA del botón, no dentro.
+
+                          Un `<button disabled>` ignora los eventos de sus
+                          hijos —ni `pointerEvents: auto` lo salva—, así que
+                          una X anidada dentro del paso marcado no respondía.
+                        */}
+                        <span
+                          style={{ display: "flex", alignItems: "center", gap: 5 }}
+                        >
                         <button
-                          key={marca}
                           type="button"
                           disabled={hecho || pendiente}
                           onClick={() => marcar(marca)}
@@ -462,7 +494,107 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                           >
                             {h ?? "Marcar"}
                           </span>
+
                         </button>
+
+                        {hecho && !enDuda && (
+                          <button
+                            type="button"
+                            aria-label={`Quitar ${titulo.toLowerCase()}`}
+                            onClick={() => setConfirmando(marca)}
+                            disabled={pendiente}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 30,
+                              height: 30,
+                              borderRadius: 9,
+                              border: "1px solid var(--cv-line-soft)",
+                              background: "#fff",
+                              color: "var(--cv-ink-4)",
+                              cursor: pendiente ? "default" : "pointer",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                        </span>
+
+                        {/*
+                          La confirmación, bajo la marca que se va a quitar.
+
+                          Dice QUÉ hora se borra, no un "¿seguro?" a secas:
+                          quien se equivoca suele tener varias marcadas y hay
+                          que saber cuál se lleva por delante.
+                        */}
+                        {enDuda && (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              marginTop: 5,
+                              padding: "9px 11px",
+                              borderRadius: 10,
+                              border: "1px solid #F5C6C9",
+                              background: "#FDF1F2",
+                            }}
+                          >
+                            <span
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                fontSize: 11,
+                                color: "#B23A40",
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              Se borrará <b>{titulo.toLowerCase()} de las {h}</b>,
+                              aquí y en la hoja. Podrás volver a marcarla.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmando(null)}
+                              disabled={pendiente}
+                              style={{
+                                border: "none",
+                                background: "none",
+                                padding: "6px 4px",
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: "var(--cv-ink-4)",
+                                flexShrink: 0,
+                              }}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deshacer(marca)}
+                              disabled={pendiente}
+                              style={{
+                                border: "none",
+                                background: "#B23A40",
+                                color: "#fff",
+                                fontFamily: "inherit",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                padding: "6px 11px",
+                                borderRadius: 8,
+                                cursor: pendiente ? "default" : "pointer",
+                                flexShrink: 0,
+                                opacity: pendiente ? 0.7 : 1,
+                              }}
+                            >
+                              {pendiente ? "Quitando…" : "Quitar"}
+                            </button>
+                          </div>
+                        )}
+                        </div>
                       );
                     })}
                   </div>

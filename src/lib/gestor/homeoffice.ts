@@ -19,7 +19,10 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db/client";
 import { exigirPersona } from "@/modules/identidad/infrastructure/wiring";
 import { aFechaDia, hoyEnMexico, horaEnMexico } from "@/lib/fechas";
-import { sincronizarEnSegundoPlano } from "@/lib/google/sincronizar";
+import {
+  limpiarChecadaDeLaHoja,
+  sincronizarEnSegundoPlano,
+} from "@/lib/google/sincronizar";
 
 /**
  * A partir de esta hora, el primer toque del día cuenta como SALIDA.
@@ -284,4 +287,101 @@ export async function checarHomeOffice(
   sincronizarEnSegundoPlano();
   revalidatePath("/actividad");
   return { ok: true, tipo: queHacer, hora: horaEnMexico(ahora) };
+}
+
+/**
+ * Quita una marca que se hizo por error.
+ *
+ * Pasa a diario: se toca "Salida" cuando se quería "Salida a comer", o se
+ * marca dos veces sin querer. Hasta ahora eso había que corregirlo a mano
+ * contra la base y contra la hoja —le tocó a Héctor el 28 de septiembre—, y
+ * eso no escala a cincuenta personas.
+ *
+ * Se borra la marca Y se reescribe la fila de la hoja, porque el registro
+ * vive en los dos sitios: dejarlo solo en la base haría que `CHECK HO`
+ * siguiera enseñando una hora que ya no existe.
+ *
+ * Si al quitarla la jornada se queda SIN NINGUNA marca, la fila entera se
+ * borra: una checada vacía no dice nada y ensucia el conteo del día. La hoja
+ * conserva su renglón con las horas en blanco —borrar una fila de en medio
+ * correría todas las de abajo, y hay tableros que las miran por número—.
+ */
+export async function deshacerChecada(marca: Marca): Promise<ResultadoHO> {
+  const persona = await exigirPersona();
+
+  const dia = aFechaDia(hoyEnMexico());
+
+  const fila = await db.checada.findUnique({
+    where: { personaId_fecha: { personaId: persona.id, fecha: dia } },
+    select: {
+      entrada: true,
+      salida: true,
+      comidaInicio: true,
+      comidaFin: true,
+    },
+  });
+
+  if (!fila) {
+    return { ok: false, error: "Hoy no tienes ninguna marca registrada." };
+  }
+
+  const tenia =
+    marca === "entrada"
+      ? fila.entrada
+      : marca === "comidaInicio"
+        ? fila.comidaInicio
+        : marca === "comidaFin"
+          ? fila.comidaFin
+          : fila.salida;
+
+  if (!tenia) {
+    return { ok: false, error: "Esa marca no está registrada." };
+  }
+
+  // Lo que quedaría al quitarla: si no queda nada, la fila sobra.
+  const restantes = (
+    [
+      ["entrada", fila.entrada],
+      ["comidaInicio", fila.comidaInicio],
+      ["comidaFin", fila.comidaFin],
+      ["salida", fila.salida],
+    ] as const
+  ).filter(([k, v]) => k !== marca && v !== null);
+
+  if (restantes.length === 0) {
+    await db.checada.delete({
+      where: { personaId_fecha: { personaId: persona.id, fecha: dia } },
+    });
+  } else {
+    await db.checada.update({
+      where: { personaId_fecha: { personaId: persona.id, fecha: dia } },
+      data: {
+        [marca]: null,
+        /*
+         * A la cola otra vez, para que la hoja pierda esa hora.
+         *
+         * La fila de `CHECK HO` se busca y se reescribe entera, así que basta
+         * con encolarla: el sincronizador la deja como está ahora.
+         */
+        sheetSync: "pendiente",
+      },
+    });
+  }
+
+  /*
+   * La hoja, cuando ya no queda fila que encolar.
+   *
+   * Si se borró la checada no hay nada que suba, y `CHECK HO` se quedaría con
+   * la hora vieja para siempre. Se limpia a mano su renglón del día.
+   */
+  if (restantes.length === 0) {
+    await limpiarChecadaDeLaHoja(persona.id, dia).catch(() => {});
+  } else {
+    sincronizarEnSegundoPlano();
+  }
+
+  revalidatePath("/actividad");
+  revalidatePath("/checador");
+
+  return { ok: true, tipo: marca };
 }

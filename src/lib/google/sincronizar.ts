@@ -836,6 +836,69 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
  * Devuelve `false` si no la encuentra; entonces el borrado en la base sigue
  * adelante y se avisa, porque perder el registro es peor que dejar la fila.
  */
+/**
+ * Deja en blanco las horas de una checada en CHECK HO.
+ *
+ * Hace falta cuando se deshace la ÚLTIMA marca del día: la fila de la base
+ * desaparece, así que ya no hay nada que el sincronizador pueda encolar, y la
+ * hoja se quedaría con una hora de una jornada que ya no existe.
+ *
+ * Se vacían las horas en vez de borrar el renglón: quitar una fila de en
+ * medio corre todas las de abajo, y hay tableros que las miran por número.
+ * Un renglón con el nombre y la fecha pero sin horas se lee como lo que es
+ * —ese día no quedó marca— y no rompe nada.
+ */
+export async function limpiarChecadaDeLaHoja(
+  personaId: string,
+  fecha: Date,
+): Promise<boolean> {
+  const s = await clienteEscritura();
+  if (!s) return false;
+
+  const persona = await db.persona.findUnique({
+    where: { id: personaId },
+    select: { nombre: true, nombreUsuario: true, numero: true },
+  });
+  if (!persona) return false;
+
+  const numero = persona.numero ?? "";
+  const nombre = nombreDeHoja(persona);
+  const dia = diaComparable(fechaMX(fecha));
+
+  const actual = await s.spreadsheets.values.get({
+    spreadsheetId: LIBRO_CHECK_HO,
+    range: `${HOJA_CHECK_HO}!A:C`,
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const filas = actual.data.values ?? [];
+
+  const igual = (a: unknown, b: unknown) =>
+    String(a ?? "").trim().toUpperCase() === String(b ?? "").trim().toUpperCase();
+
+  // Misma búsqueda que al escribir: por número cuando lo hay, por nombre
+  // cuando no, y de abajo hacia arriba para quedarse con la última.
+  const conNumero = String(numero).trim() !== "";
+  for (let i = filas.length - 1; i >= 0; i--) {
+    const f = filas[i] ?? [];
+    if (dia === null || diaComparable(f[2]) !== dia) continue;
+    const misma = conNumero
+      ? igual(f[0], numero)
+      : String(f[0] ?? "").trim() === "" && igual(f[1], nombre);
+    if (!misma) continue;
+
+    await s.spreadsheets.values.update({
+      spreadsheetId: LIBRO_CHECK_HO,
+      range: `${HOJA_CHECK_HO}!A${i + 1}:H${i + 1}`,
+      valueInputOption: "USER_ENTERED",
+      // Se conservan número, nombre y fecha; se vacía lo demás.
+      requestBody: { values: [[f[0] ?? "", f[1] ?? "", f[2] ?? "", "", "", "", "", ""]] },
+    });
+    return true;
+  }
+
+  return false;
+}
+
 export async function quitarDeLaHoja(datos: {
   fecha: Date;
   nombre: string;

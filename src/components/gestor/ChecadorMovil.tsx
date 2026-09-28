@@ -1,10 +1,19 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Building2, Check, House, LogIn, LogOut, UtensilsCrossed } from "lucide-react";
+import {
+  Building2,
+  Check,
+  House,
+  LogIn,
+  LogOut,
+  UtensilsCrossed,
+  X,
+} from "lucide-react";
 
 import {
   checarHomeOffice,
+  deshacerChecada,
   type EstadoHO,
   type Marca,
   type Modalidad,
@@ -55,6 +64,8 @@ export function ChecadorMovil({
 }) {
   const [local, setLocal] = useState(estado);
   const [error, setError] = useState<string | null>(null);
+  /** La marca cuyo borrado se está confirmando, si alguna. */
+  const [confirmando, setConfirmando] = useState<Marca | null>(null);
   const [pendiente, startTransition] = useTransition();
 
   /*
@@ -103,6 +114,26 @@ export function ChecadorMovil({
         if (marca === "salida") nuevo.salida = r.hora ?? null;
         return nuevo;
       });
+    });
+  };
+
+  /*
+   * Quitar una marca puesta por error.
+   *
+   * Se confirma antes: borrarla toca la base Y la hoja, y un toque de más en
+   * una pantalla que se usa con prisa no debería deshacer un registro sin
+   * avisar.
+   */
+  const deshacer = (marca: Marca) => {
+    setError(null);
+    startTransition(async () => {
+      const r = await deshacerChecada(marca);
+      setConfirmando(null);
+      if (!r.ok) {
+        setError(r.error ?? "No se pudo quitar.");
+        return;
+      }
+      setLocal((v) => ({ ...v, [marca]: null }));
     });
   };
 
@@ -318,13 +349,25 @@ export function ChecadorMovil({
                 const hecho = Boolean(hora);
                 const sugerida = local.siguiente === marca;
 
+                const enDuda = confirmando === marca;
+
                 return (
+                  <div key={marca}>
+                  {/*
+                    La X va FUERA del botón, no dentro.
+
+                    Un `<button disabled>` ignora los eventos de sus hijos —ni
+                    `pointerEvents: auto` lo salva—, así que una X anidada
+                    dentro del paso ya marcado no respondía al toque.
+                  */}
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button
-                    key={marca}
                     type="button"
                     disabled={hecho || pendiente}
                     onClick={() => marcar(marca)}
                     style={{
+                      flex: 1,
+                      minWidth: 0,
                       display: "flex",
                       alignItems: "center",
                       gap: 13,
@@ -403,7 +446,109 @@ export function ChecadorMovil({
                         Marcar
                       </span>
                     )}
+
                   </button>
+
+                  {hecho && !enDuda && (
+                    <button
+                      type="button"
+                      aria-label={`Quitar ${titulo.toLowerCase()}`}
+                      onClick={() => setConfirmando(marca)}
+                      disabled={pendiente}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        // 40px: el pulgar necesita blanco, y esta es la única
+                        // forma de deshacer un toque equivocado.
+                        width: 40,
+                        height: 40,
+                        borderRadius: 12,
+                        border: "1px solid var(--cv-line-soft)",
+                        background: "#fff",
+                        color: "var(--cv-ink-4)",
+                        cursor: pendiente ? "default" : "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                  </span>
+
+                  {/*
+                    La confirmación, bajo la marca que se va a quitar.
+
+                    Se dice QUÉ hora se borra, no un "¿seguro?" a secas: quien
+                    toca por error suele tener varias marcadas y hay que saber
+                    cuál se lleva por delante.
+                  */}
+                  {enDuda && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 9,
+                        marginTop: 6,
+                        padding: "11px 13px",
+                        borderRadius: 12,
+                        border: "1px solid #F5C6C9",
+                        background: "#FDF1F2",
+                      }}
+                    >
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: 11.5,
+                          color: "#B23A40",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        Se borrará <b>{titulo.toLowerCase()} de las {hora}</b>,
+                        aquí y en la hoja. Podrás volver a marcarla.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmando(null)}
+                        disabled={pendiente}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          padding: "8px 6px",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          color: "var(--cv-ink-4)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deshacer(marca)}
+                        disabled={pendiente}
+                        style={{
+                          border: "none",
+                          background: "#B23A40",
+                          color: "#fff",
+                          fontFamily: "inherit",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          padding: "8px 13px",
+                          borderRadius: 9,
+                          cursor: pendiente ? "default" : "pointer",
+                          flexShrink: 0,
+                          opacity: pendiente ? 0.7 : 1,
+                        }}
+                      >
+                        {pendiente ? "Quitando…" : "Quitar"}
+                      </button>
+                    </div>
+                  )}
+                  </div>
                 );
               })}
             </div>
