@@ -72,6 +72,17 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
   const elegirDonde = (m: Modalidad) =>
     setLocal((v) => ({ ...v, modalidad: m }));
 
+  /*
+   * ¿Se puede deshacer la elección de dónde?
+   *
+   * Solo mientras NO haya ninguna marca: hasta entonces la modalidad vive en
+   * el estado local y nada llegó al servidor, así que regresar es gratis. Con
+   * la primera marca la modalidad se guarda con la jornada, y cambiarla ahí
+   * ya no es deshacer un clic: es reescribir el día.
+   */
+  const sinMarcas =
+    !local.entrada && !local.comidaInicio && !local.comidaFin && !local.salida;
+
   const marcar = (marca: Marca) =>
     startTransition(async () => {
       setAviso(null);
@@ -211,6 +222,34 @@ export function BotonHomeOffice({ estado }: { estado: EstadoHO }) {
                       : local.modalidad === "OFICINA"
                         ? "Hoy estás en la oficina"
                         : "Registra tu jornada"}
+                    {/* Un clic de más no debe quedarse: mientras no haya
+                        marcas, la elección se puede deshacer aquí mismo. */}
+                    {local.modalidad && sinMarcas && !cerrado && (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLocal((v) => ({ ...v, modalidad: null }))
+                          }
+                          disabled={pendiente}
+                          style={{
+                            border: "none",
+                            background: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#178A49",
+                            textDecoration: "underline",
+                            textUnderlineOffset: 2,
+                          }}
+                        >
+                          cambiar
+                        </button>
+                      </>
+                    )}
                   </span>
                 </span>
                 <button

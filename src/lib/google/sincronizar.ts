@@ -4,7 +4,7 @@ import { folioDeTicket } from "@/lib/trabajo/folio";
 import { google } from "googleapis";
 import { credencialesGoogle } from "./credenciales";
 import { db } from "@/lib/db/client";
-import { BDD_MAESTRA, HOJAS } from "./hojas";
+import { BDD_MAESTRA, HOJAS, aDia, aNumero, aTexto, leerRango } from "./hojas";
 
 /**
  * Copia a Google Sheets de lo que se captura aquí.
@@ -328,9 +328,17 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
     // Rescate: reservas de una corrida que murió sin terminar.
     const limite = new Date(Date.now() - MINUTOS_HUERFANA * 60_000);
     await Promise.all([
+      /*
+       * Las HORAS rescatadas quedan como "reenviar", no "pendiente".
+       *
+       * Una corrida que murió pudo hacerlo DESPUÉS de anexar a la hoja y
+       * antes de marcar: reenviarla a ciegas la duplica allá —pasó el día del
+       * lanzamiento, diez filas dobles—. La marca distinta hace que el envío
+       * las verifique contra la hoja antes de anexarlas.
+       */
       db.hora.updateMany({
         where: { sheetSync: { startsWith: "env-" }, actualizadoEn: { lt: limite } },
-        data: { sheetSync: "pendiente" },
+        data: { sheetSync: "reenviar" },
       }),
       db.ausencia.updateMany({
         where: { sheetSync: { startsWith: "env-" }, actualizadoEn: { lt: limite } },
@@ -349,16 +357,32 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
     // ── HORAS → BDD ACTIVIDAD V02 ──────────────────────────────────────────
     // `origen: "app"` es el cinturón: lo importado de la hoja no vuelve a ella
     // por mucho que su estado diga "pendiente".
+    // Quiénes vienen de una corrida muerta: a esas se les verifica la hoja.
+    const sospechosas = new Set(
+      (
+        await db.hora.findMany({
+          where: { sheetSync: "reenviar" },
+          select: { id: true },
+        })
+      ).map((h) => h.id),
+    );
+
     await db.hora.updateMany({
-      where: { sheetSync: "pendiente", origen: "app" },
+      where: { sheetSync: { in: ["pendiente", "reenviar"] }, origen: "app" },
       data: { sheetSync: marca },
     });
-    aDevolver.push(() =>
-      db.hora.updateMany({
+    aDevolver.push(async () => {
+      // Cada una vuelve a SU estado: perder la marca de sospechosa haría que
+      // el siguiente intento la anexara a ciegas.
+      await db.hora.updateMany({
+        where: { sheetSync: marca, id: { in: [...sospechosas] } },
+        data: { sheetSync: "reenviar" },
+      });
+      await db.hora.updateMany({
         where: { sheetSync: marca },
         data: { sheetSync: "pendiente" },
-      }),
-    );
+      });
+    });
 
     const horas = await db.hora.findMany({
       where: { sheetSync: marca },
@@ -382,11 +406,56 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
       },
     });
 
-    if (horas.length > 0) {
+    /*
+     * Las sospechosas de reenvío se buscan en la hoja ANTES de anexar.
+     *
+     * Si la corrida muerta alcanzó a escribirlas, ya están allá y volver a
+     * mandarlas las duplicaría; si murió antes, no están y se mandan como
+     * cualquier otra. Se compara por contenido —día, persona, horas y
+     * comentario— con los mismos lectores que usa la ingesta, porque la hoja
+     * devuelve fechas como seriales y números re-tipados.
+     */
+    let porEnviar = horas;
+    if (horas.some((h) => sospechosas.has(h.id))) {
+      const filasHoja = await leerRango(BDD_MAESTRA, `${HOJAS.actividad}!A2:L`);
+      const norm = (t: string) => t.trim().toUpperCase().replace(/\s+/g, " ");
+
+      const enHoja = new Map<string, number>();
+      // Solo la cola: los anexos van siempre al final, y leer 400 filas basta
+      // para cubrir cualquier corrida muerta reciente.
+      for (const f of filasHoja.slice(-400)) {
+        const k = [
+          aDia(f[0]) ?? "",
+          norm(aTexto(f[1]) ?? ""),
+          (aNumero(f[2]) ?? 0).toFixed(2),
+          (aTexto(f[7]) ?? "").trim(),
+        ].join("|");
+        enHoja.set(k, (enHoja.get(k) ?? 0) + 1);
+      }
+
+      porEnviar = horas.filter((h) => {
+        if (!sospechosas.has(h.id)) return true;
+        const k = [
+          h.fecha.toISOString().slice(0, 10),
+          norm(nombreDeHoja(h.persona)),
+          Number(h.horas).toFixed(2),
+          (h.comentario ?? "").trim(),
+        ].join("|");
+        const quedan = enHoja.get(k) ?? 0;
+        if (quedan > 0) {
+          // Ya está en la hoja: la corrida muerta sí alcanzó a escribirla.
+          enHoja.set(k, quedan - 1);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    if (porEnviar.length > 0) {
       await anexar(
         BDD_MAESTRA,
         HOJAS.actividad,
-        horas.map((h) => [
+        porEnviar.map((h) => [
           // A..L, el orden del script de siempre.
           fechaMX(h.fecha),
           nombreDeHoja(h.persona),
@@ -404,11 +473,16 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
           h.esfuerzo ?? "",
         ]),
       );
+      enviadas += porEnviar.length;
+    }
+
+    if (horas.length > 0) {
+      // TODO el lote queda "ok": también lo que ya estaba en la hoja, que es
+      // justo lo que no debía volver a enviarse.
       await db.hora.updateMany({
         where: { id: { in: horas.map((h) => h.id) } },
         data: { sheetSync: "ok" },
       });
-      enviadas += horas.length;
     }
 
     /*
