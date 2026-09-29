@@ -1087,6 +1087,20 @@ export function ActividadScreen({
               const clave = iso(d);
               const delDia = porDia.get(clave) ?? [];
               const horasDia = delDia.reduce((n, e) => n + e.hours, 0);
+              /*
+               * ¿Este día ya está cubierto?
+               *
+               * Con varios registros en un día no se ve de un vistazo si
+               * suman la jornada: «2 h de 8 h» y «8 h de 8 h» se leen igual
+               * de lejos. Esto es lo que pinta el punto de la izquierda y el
+               * pie de la derecha, sin mover nada de sitio.
+               *
+               * La meta es la jornada de CADA persona, no un 8 fijo: quien
+               * trabaja media jornada tiene su día completo con la mitad.
+               */
+              const meta = topeDia > 0 ? topeDia : 8;
+              const completo = horasDia >= meta;
+              const faltan = Math.max(0, meta - horasDia);
               const esHoy = clave === hoyISO;
               const futuro = clave > hoyISO;
 
@@ -1119,13 +1133,11 @@ export function ActividadScreen({
                           width: 6,
                           height: 6,
                           borderRadius: "50%",
-                          background: esHoy
-                            ? "var(--cv-green)"
-                            : futuro
-                              ? "var(--cv-line)"
-                              : horasDia > 0
-                                ? "#C8D6E2"
-                                : "#F5B843",
+                          background: futuro
+                            ? "var(--cv-line)"
+                            : completo
+                              ? "var(--cv-green)"
+                              : "#F5B843",
                         }}
                       />
                       <span
@@ -1454,16 +1466,23 @@ export function ActividadScreen({
                       style={{
                         display: "block",
                         fontSize: 9,
-                        color: "var(--cv-ink-4)",
+                        // Ámbar cuando falta algo: es la misma señal que el
+                        // punto de la izquierda, al otro extremo de la fila.
+                        color:
+                          !futuro && !completo && horasDia > 0
+                            ? "#B07C10"
+                            : "var(--cv-ink-4)",
                       }}
                     >
                       {futuro
                         ? ""
                         : horasDia === 0
                           ? "falta"
-                          : horasDia > 8
+                          : horasDia > meta
                             ? "con extra"
-                            : "de 8 h"}
+                            : completo
+                              ? `de ${fmt(meta)} h`
+                              : `faltan ${fmt(faltan)} h`}
                     </span>
                   </span>
                 </div>
