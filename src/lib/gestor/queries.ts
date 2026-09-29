@@ -21,18 +21,14 @@ export type Opcion = { value: string; parent: string; extra: string | null };
 /**
  * Los catálogos de la pantalla de captura.
  *
- * Salen de `public.Catalog`, que es el MISMO catálogo que usa el Digital Core:
- * 215 proyectos y 2 092 entregables, curados a mano. Reconstruirlos desde
- * `core.proyecto` ofrecía 371 proyectos —todos los del padrón, incluidos los
- * cerrados y los que nadie reporta— y el buscador devolvía cosas que no vienen
- * a cuento.
+ * Los PROYECTOS y los ENTREGABLES salen de donde se administran de verdad
+ * —el Deal Engine—, no de `public.Catalog`. Los TIPOS y ESFUERZOS sí siguen
+ * ahí: son una lista corta y cerrada que nadie cotiza, y no tiene equivalente
+ * vivo en otro sitio.
  *
- * `parent` enlaza cada entregable con su proyecto; `extra` trae la disciplina,
- * que el formulario rellena solo al elegir entregable. Es la misma tabla
- * lookup que tenían las hojas.
- *
- * Nota: `Catalog` vive en `public`, que es del portal. Aquí solo se LEE, nunca
- * se escribe. Cuando el portal se retire habrá que traer esta tabla a `core`.
+ * `parent` enlaza cada entregable con su proyecto por NOMBRE, que es lo que
+ * guarda el combo de la pantalla; `extra` trae la disciplina, que el
+ * formulario rellena solo al elegir entregable.
  */
 export async function catalogosActividad(): Promise<{
   proyectos: Opcion[];
@@ -45,7 +41,7 @@ export async function catalogosActividad(): Promise<{
   >`
     SELECT kind, value, parent, extra
     FROM public."Catalog"
-    WHERE active AND kind IN ('entregable', 'tipo', 'esfuerzo')
+    WHERE active AND kind IN ('tipo', 'esfuerzo')
     ORDER BY kind, position, value
   `;
 
@@ -56,10 +52,151 @@ export async function catalogosActividad(): Promise<{
 
   return {
     proyectos: await proyectosParaReportar(),
-    entregables: de("entregable"),
+    entregables: await entregablesParaReportar(),
     tipos: de("tipo"),
     esfuerzos: de("esfuerzo"),
   };
+}
+
+/**
+ * Los entregables de cada proyecto, vivos.
+ *
+ * Ya no salen de `public.Catalog`. Esa tabla se llenó en la migración y nadie
+ * la actualiza: tenía 2 092 entregables de 215 proyectos —trece de ellos ya
+ * inexistentes—, y NINGÚN proyecto creado desde agosto entraba en ella. El
+ * efecto era el que se veía en pantalla: un proyecto recién cotizado salía
+ * en la lista pero sin un solo entregable que elegir, y a los antiguos les
+ * faltaba todo lo que se les añadió después de la migración.
+ *
+ * Ahora se leen de la cadena que mantiene el Deal Engine:
+ *
+ *     Project → Quote (viva) → QuoteVersion (vigente) → WorkPackage → Deliverable
+ *
+ * Al ser una lectura directa, no hay nada que sincronizar: un entregable que
+ * se añade a una cotización aparece aquí en la siguiente carga de la pantalla,
+ * y uno que se quita deja de ofrecerse. Sin desplegar, sin copiar tablas.
+ *
+ * Se une por `proyecto_codigo`, nunca por nombre: hay once proyectos distintos
+ * que se llaman igual, y en `deal` el nombre llega además con el cliente y el
+ * servicio por delante —«[NIRVA · DISEÑO...] Consultorios...»—, que no es lo
+ * que la pantalla tiene guardado.
+ *
+ * A lo vivo se le suma lo que YA TIENE HORAS reportadas y no está en la
+ * cotización vigente. Sin esa mitad, el 56 % de las horas históricas apuntaría
+ * a un entregable que ya no se puede elegir: los diez proyectos internos
+ * —ADMINISTRACION, MARKETING, RECURSOS HUMANOS, CAPACITACIONES…— no se cotizan
+ * nunca, así que no tienen entregables en `deal`, y media oficina se quedaría
+ * sin poder reportar su día a día.
+ */
+async function entregablesParaReportar(): Promise<Opcion[]> {
+  const filas = await db.$queryRaw<
+    { parent: string; value: string; extra: string | null }[]
+  >`
+    WITH vivos AS (
+      /*
+       * Lo que hay en la cotización VIGENTE de cada proyecto.
+       *
+       * «DISTINCT ON» colapsa los repetidos dentro de un mismo proyecto: un
+       * encargo de veinte casas tipo trae veinte paquetes de trabajo con los
+       * mismos tres entregables, y ofrecerlos veinte veces en el combo es
+       * pedirle a la gente que elija entre opciones idénticas.
+       */
+      SELECT DISTINCT ON (p.proyecto_codigo, upper(trim(d.name)))
+             p.proyecto_codigo AS codigo,
+             trim(d.name)      AS valor,
+             NULLIF(trim(COALESCE(d.specialty, '')), '') AS disciplina
+        FROM deal."Project" p
+        JOIN deal."Quote" q        ON q."projectId" = p.id
+                                  AND q."archivedAt" IS NULL
+        JOIN deal."QuoteVersion" v ON v.id = q."currentVersionId"
+        JOIN deal."WorkPackage" w  ON w."quoteVersionId" = v.id
+        JOIN deal."Deliverable" d  ON d."workPackageId" = w.id
+       WHERE p.proyecto_codigo IS NOT NULL
+         -- Un nombre sin una sola letra ni número no se puede elegir ni leer:
+         -- hay un entregable llamado "." que solo estorba en el combo.
+         AND regexp_replace(COALESCE(d.name, ''), '[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]', '', 'g') <> ''
+       ORDER BY p.proyecto_codigo, upper(trim(d.name)), d."order", d."createdAt"
+    ),
+    usados AS (
+      -- Lo que ya tiene horas: la disciplina se toma del último reporte, que
+      -- es la que la gente viene usando de verdad para ese entregable.
+      SELECT DISTINCT ON (h.proyecto_codigo, upper(trim(h.entregable_texto)))
+             h.proyecto_codigo        AS codigo,
+             trim(h.entregable_texto) AS valor,
+             NULLIF(trim(COALESCE(h.disciplina, '')), '') AS disciplina
+        FROM actividad.hora h
+       WHERE h.proyecto_codigo IS NOT NULL
+         AND trim(COALESCE(h.entregable_texto, '')) <> ''
+       ORDER BY h.proyecto_codigo, upper(trim(h.entregable_texto)), h.fecha DESC
+    ),
+    todo AS (
+      -- El 0 y el 1 deciden quién gana cuando el mismo entregable está en las
+      -- dos: manda la cotización, que es el dato administrado.
+      SELECT codigo, valor, disciplina, 0 AS orden FROM vivos
+      UNION ALL
+      SELECT u.codigo, u.valor, u.disciplina, 1
+        FROM usados u
+       WHERE NOT EXISTS (
+         SELECT 1 FROM vivos v
+          WHERE v.codigo = u.codigo AND upper(v.valor) = upper(u.valor)
+       )
+    ),
+    unico AS (
+      SELECT DISTINCT ON (codigo, upper(valor)) codigo, valor, disciplina
+        FROM todo ORDER BY codigo, upper(valor), orden
+    ),
+    /*
+     * Un «GENERAL» para el proyecto que no tiene NADA que ofrecer.
+     *
+     * El combo de entregables no admite texto libre —el catálogo es la
+     * verdad—, así que un proyecto reportable sin una sola opción deja a la
+     * persona sin poder enviar su día, y con un mensaje que además habla de
+     * «cero horas». Le pasa a los internos que nunca se cotizaron y todavía
+     * no tienen horas: FACTURACIÓN, ECONSTRUCTION.
+     *
+     * «GENERAL» es lo que ya usan de hecho los otros diez internos, así que
+     * no inventa una categoría nueva: la iguala.
+     */
+    rescate AS (
+      SELECT cp.codigo, 'GENERAL' AS valor, 'GENERAL' AS disciplina
+        FROM core.proyecto cp
+       WHERE NOT EXISTS (SELECT 1 FROM unico u WHERE u.codigo = cp.codigo)
+    ),
+    completo AS (
+      SELECT codigo, valor, disciplina FROM unico
+      UNION ALL
+      SELECT codigo, valor, disciplina FROM rescate
+    )
+    /*
+     * El «parent» es el NOMBRE, porque es lo que el combo de proyecto deja
+     * guardado. Se saca de «core.proyecto» cuando existe y del propio «deal»
+     * cuando no —un proyecto recién creado todavía no tiene fila en core, y
+     * sus entregables deben poder elegirse igual—.
+     */
+    /*
+     * El «DISTINCT ON» final va por NOMBRE, no por código.
+     *
+     * Once proyectos distintos comparten nombre —dos «TORRE EL VENADO VTA»
+     * con códigos diferentes—, y el combo solo guarda el nombre: sin esto, sus
+     * entregables salían duplicados en la lista y no había forma de saber cuál
+     * era cuál. Al unirlos, además, el que no tiene entregables propios hereda
+     * los del gemelo, que es lo que la gente espera al ver un solo proyecto.
+     */
+    SELECT DISTINCT ON (upper(COALESCE(pr.nombre, dp.name)), upper(u.valor))
+           COALESCE(pr.nombre, dp.name) AS parent,
+           u.valor                      AS value,
+           u.disciplina                 AS extra
+      FROM completo u
+      LEFT JOIN core.proyecto pr ON pr.codigo = u.codigo
+      LEFT JOIN deal."Project" dp ON dp.proyecto_codigo = u.codigo
+     WHERE COALESCE(pr.nombre, dp.name) IS NOT NULL
+     -- La disciplina primero: entre dos copias del mismo entregable, gana la
+     -- que trae disciplina, que es la que autocompleta el formulario.
+     ORDER BY upper(COALESCE(pr.nombre, dp.name)), upper(u.valor),
+              (u.disciplina IS NULL), u.valor
+  `;
+
+  return filas;
 }
 
 /**
