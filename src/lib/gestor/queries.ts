@@ -22,9 +22,9 @@ export type Opcion = { value: string; parent: string; extra: string | null };
  * Los catálogos de la pantalla de captura.
  *
  * Los PROYECTOS y los ENTREGABLES salen de donde se administran de verdad
- * —el Deal Engine—, no de `public.Catalog`. Los TIPOS y ESFUERZOS sí siguen
- * ahí: son una lista corta y cerrada que nadie cotiza, y no tiene equivalente
- * vivo en otro sitio.
+ * —el Deal Engine—, con `public.Catalog` detrás para lo que aquel no tiene.
+ * Los TIPOS y ESFUERZOS sí siguen saliendo del catálogo: son una lista corta
+ * y cerrada que nadie cotiza, y no tiene equivalente vivo en otro sitio.
  *
  * `parent` enlaza cada entregable con su proyecto por NOMBRE, que es lo que
  * guarda el combo de la pantalla; `extra` trae la disciplina, que el
@@ -129,9 +129,32 @@ async function entregablesParaReportar(): Promise<Opcion[]> {
          AND trim(COALESCE(h.entregable_texto, '')) <> ''
        ORDER BY h.proyecto_codigo, upper(trim(h.entregable_texto)), h.fecha DESC
     ),
+    heredados AS (
+      /*
+       * Lo que traía el catálogo viejo y NO está en ninguna de las otras dos.
+       *
+       * «public.Catalog» no se actualiza desde la migración, pero lo que
+       * guarda es real: 826 entregables de 114 proyectos que se curaron a
+       * mano y que la cotización vigente no tiene —porque el proyecto se
+       * cotizó fuera del Deal Engine, o porque su cotización quedó archivada—.
+       * Quitarlos dejó proyectos con dos opciones donde antes había seis.
+       *
+       * Se suma, no sustituye: el Deal Engine manda, esto rellena los huecos.
+       */
+      SELECT cp.codigo,
+             trim(c.value) AS valor,
+             NULLIF(trim(COALESCE(c.extra, '')), '') AS disciplina
+        FROM public."Catalog" c
+        JOIN core.proyecto cp
+          ON upper(trim(cp.nombre)) = upper(trim(c.parent))
+       WHERE c.kind = 'entregable'
+         AND c.active
+         AND regexp_replace(COALESCE(c.value, ''), '[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]', '', 'g') <> ''
+    ),
     todo AS (
-      -- El 0 y el 1 deciden quién gana cuando el mismo entregable está en las
-      -- dos: manda la cotización, que es el dato administrado.
+      -- El orden decide quién gana cuando el mismo entregable está en varias
+      -- fuentes: manda la cotización vigente, luego lo que ya tiene horas, y
+      -- por último el catálogo heredado.
       SELECT codigo, valor, disciplina, 0 AS orden FROM vivos
       UNION ALL
       SELECT u.codigo, u.valor, u.disciplina, 1
@@ -139,6 +162,17 @@ async function entregablesParaReportar(): Promise<Opcion[]> {
        WHERE NOT EXISTS (
          SELECT 1 FROM vivos v
           WHERE v.codigo = u.codigo AND upper(v.valor) = upper(u.valor)
+       )
+      UNION ALL
+      SELECT h.codigo, h.valor, h.disciplina, 2
+        FROM heredados h
+       WHERE NOT EXISTS (
+         SELECT 1 FROM vivos v
+          WHERE v.codigo = h.codigo AND upper(v.valor) = upper(h.valor)
+       )
+         AND NOT EXISTS (
+         SELECT 1 FROM usados u
+          WHERE u.codigo = h.codigo AND upper(u.valor) = upper(h.valor)
        )
     ),
     unico AS (
