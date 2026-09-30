@@ -1128,19 +1128,6 @@ export function ActividadScreen({
                       style={{ display: "flex", alignItems: "center", gap: 6 }}
                     >
                       <span
-                        aria-hidden="true"
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: futuro
-                            ? "var(--cv-line)"
-                            : completo
-                              ? "var(--cv-green)"
-                              : "#F5B843",
-                        }}
-                      />
-                      <span
                         style={{
                           fontSize: 12,
                           fontWeight: 700,
@@ -1159,11 +1146,55 @@ export function ActividadScreen({
                         display: "block",
                         fontSize: 10,
                         color: "var(--cv-ink-4)",
-                        paddingLeft: 12,
                       }}
                     >
                       {fechaCorta}
                     </span>
+
+                    {/*
+                      Cuánto le falta a este día, en el hueco que ya había
+                      bajo la fecha.
+
+                      Un punto de color dice que algo pasa, pero no qué: hay
+                      que haberlo aprendido de alguien. Una barra a medio
+                      llenar se entiende sola —y de paso dice CUÁNTO falta,
+                      que es justo lo que no se veía cuando un día trae seis
+                      registros y hay que sumarlos a ojo—.
+
+                      Va aquí y no en la columna del total porque ahí solo
+                      caben 46 px, y porque al recorrer la lista el ojo baja
+                      por los nombres de los días, no por los números.
+                    */}
+                    {!futuro && (
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: "block",
+                          width: 60,
+                          height: 3,
+                          marginTop: 6,
+                          borderRadius: 3,
+                          background: "var(--cv-line-soft)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "block",
+                            height: "100%",
+                            /*
+                             * El día a cero deja un trazo mínimo, no una barra
+                             * vacía: una barra sin nada dentro se lee como
+                             * «aquí no hay información», y lo que se quiere
+                             * decir es «este día está en cero».
+                             */
+                            width: `${Math.max(6, Math.min(100, Math.round((horasDia / meta) * 100)))}%`,
+                            background: completo ? "var(--cv-green)" : "#F5B843",
+                            borderRadius: 3,
+                          }}
+                        />
+                      </span>
+                    )}
                   </span>
 
                   <span
@@ -1453,11 +1484,14 @@ export function ActividadScreen({
                         fontSize: 13,
                         fontWeight: 700,
                         lineHeight: 1,
+                        // Verde cuando el día está cubierto, ámbar cuando
+                        // no: es la misma señal que la barra, para que el
+                        // ojo la cace también al bajar por los totales.
                         color: futuro
                           ? "#C8D6E2"
-                          : esHoy && horasDia === 0
-                            ? "#B07C10"
-                            : "var(--cv-ink)",
+                          : completo
+                            ? "#178A49"
+                            : "#B07C10",
                       }}
                     >
                       {futuro ? "—" : `${fmt(horasDia)} h`}
@@ -1466,12 +1500,11 @@ export function ActividadScreen({
                       style={{
                         display: "block",
                         fontSize: 9,
-                        // Ámbar cuando falta algo: es la misma señal que el
-                        // punto de la izquierda, al otro extremo de la fila.
+                        // Lo que falta se lee más fuerte que el "de 8 h" de un
+                        // día ya cubierto: es lo único que pide acción.
+                        fontWeight: !futuro && !completo ? 700 : 400,
                         color:
-                          !futuro && !completo && horasDia > 0
-                            ? "#B07C10"
-                            : "var(--cv-ink-4)",
+                          !futuro && !completo ? "#9A6A0E" : "var(--cv-ink-4)",
                       }}
                     >
                       {futuro
