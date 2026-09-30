@@ -107,7 +107,6 @@ async function entregablesParaReportar(): Promise<Opcion[]> {
              NULLIF(trim(COALESCE(d.specialty, '')), '') AS disciplina
         FROM deal."Project" p
         JOIN deal."Quote" q        ON q."projectId" = p.id
-                                  AND q."archivedAt" IS NULL
         JOIN deal."QuoteVersion" v ON v.id = q."currentVersionId"
         JOIN deal."WorkPackage" w  ON w."quoteVersionId" = v.id
         JOIN deal."Deliverable" d  ON d."workPackageId" = w.id
@@ -115,7 +114,38 @@ async function entregablesParaReportar(): Promise<Opcion[]> {
          -- Un nombre sin una sola letra ni número no se puede elegir ni leer:
          -- hay un entregable llamado "." que solo estorba en el combo.
          AND regexp_replace(COALESCE(d.name, ''), '[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]', '', 'g') <> ''
-       ORDER BY p.proyecto_codigo, upper(trim(d.name)), d."order", d."createdAt"
+         /*
+          * Fuera los «Entregable 1, 2, 3…» cuando el proyecto tiene nombres
+          * de verdad en alguna otra parte. Son marcadores de posición de una
+          * cotización a medio llenar, y no le dicen nada a quien reporta.
+          * Si un proyecto SOLO tuviera esos, se quedan: mejor eso que dejarlo
+          * sin una sola opción.
+          */
+         AND (
+           d.name !~* '^entregable[ _-]*[0-9]+$'
+           OR NOT EXISTS (
+             SELECT 1
+               FROM deal."Quote" q2
+               JOIN deal."QuoteVersion" v2 ON v2.id = q2."currentVersionId"
+               JOIN deal."WorkPackage" w2  ON w2."quoteVersionId" = v2.id
+               JOIN deal."Deliverable" d2  ON d2."workPackageId" = w2.id
+              WHERE q2."projectId" = p.id
+                AND d2.name !~* '^entregable[ _-]*[0-9]+$'
+                AND regexp_replace(COALESCE(d2.name,''), '[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]', '', 'g') <> ''
+           )
+         )
+       /*
+        * Las cotizaciones ARCHIVADAS cuentan igual que la viva.
+        *
+        * Archivar una cotización no borra el trabajo que describe: al unir el
+        * duplicado de «Consultorios Distrito Capacha» su cotización buena
+        * quedó archivada, y con ella sus treinta y un entregables reales, y
+        * la que quedó al mando solo tenía seis marcadores de posición.
+        *
+        * El orden decide cuál gana si el nombre coincide: primero la viva.
+        */
+       ORDER BY p.proyecto_codigo, upper(trim(d.name)),
+                (q."archivedAt" IS NOT NULL), d."order", d."createdAt"
     ),
     usados AS (
       -- Lo que ya tiene horas: la disciplina se toma del último reporte, que
@@ -141,12 +171,30 @@ async function entregablesParaReportar(): Promise<Opcion[]> {
        *
        * Se suma, no sustituye: el Deal Engine manda, esto rellena los huecos.
        */
-      SELECT cp.codigo,
+      SELECT cod.codigo,
              trim(c.value) AS valor,
              NULLIF(trim(COALESCE(c.extra, '')), '') AS disciplina
         FROM public."Catalog" c
-        JOIN core.proyecto cp
-          ON upper(trim(cp.nombre)) = upper(trim(c.parent))
+        /*
+         * El proyecto al que pertenece cada entregable heredado, por su
+         * nombre ACTUAL o por uno que haya tenido antes.
+         *
+         * «Catalog» solo guarda el nombre, y un proyecto renombrado deja sus
+         * entregables huérfanos: «Consultorios Distrito Captcha» pasó a
+         * llamarse «Capacha» y sus treinta y dos opciones dejaron de salir.
+         * El nombre viejo sigue escrito en las horas que se reportaron con
+         * él, y eso es lo que permite volver a atarlos a su código.
+         */
+        JOIN LATERAL (
+          SELECT cp.codigo
+            FROM core.proyecto cp
+           WHERE upper(trim(cp.nombre)) = upper(trim(c.parent))
+           UNION
+          SELECT h.proyecto_codigo
+            FROM actividad.hora h
+           WHERE h.proyecto_codigo IS NOT NULL
+             AND upper(trim(h.proyecto_texto)) = upper(trim(c.parent))
+        ) cod ON true
        WHERE c.kind = 'entregable'
          AND c.active
          AND regexp_replace(COALESCE(c.value, ''), '[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]', '', 'g') <> ''
