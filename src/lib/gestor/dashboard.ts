@@ -225,13 +225,21 @@ function resumenQuincena(
   filas: FilaHoras[],
   ini: string,
   fin: string,
+  /**
+   * La jornada de ESTA persona, no un ocho para todos.
+   *
+   * Hay contratos de cuatro y de cinco horas: pedirle 88 h de quincena a
+   * quien firmó media jornada la deja siempre en rojo por un trabajo que
+   * nunca se le pidió.
+   */
+  jornada = 8,
 ): Quincena {
   // Comparación de cadenas AAAA-MM-DD: ordena igual que las fechas y no
   // depende de la zona del servidor.
   const horas = filas
     .filter((f) => f.iso >= ini && f.iso <= fin)
     .reduce((n, f) => n + f.horas, 0);
-  const meta = diasHabiles(ini, fin) * 8;
+  const meta = diasHabiles(ini, fin) * jornada;
 
   return {
     horas: Math.round(horas * 10) / 10,
@@ -312,6 +320,17 @@ export const cargarResumenSemana = cache(async function cargarResumenSemana(
   // Un día antes del inicio cae siempre dentro de la quincena anterior.
   const qPrev = quincenaISO(sumarDias(q.ini, -1));
 
+  // La jornada contratada de esta persona: hay contratos de cuatro y cinco
+  // horas, y la meta de la quincena sale de ahí.
+  const jornada = Number(
+    (
+      await db.persona.findUnique({
+        where: { id: personaId },
+        select: { horasDia: true },
+      })
+    )?.horasDia ?? 8,
+  );
+
   // Solo desde el inicio de la quincena anterior: es todo lo que se necesita.
   const filas = (
     await db.hora.findMany({
@@ -328,8 +347,8 @@ export const cargarResumenSemana = cache(async function cargarResumenSemana(
     // Las ausencias no son trabajo: cuentan aparte y aquí distorsionarían.
     .filter((f) => !f.esAusencia);
 
-  const quincena = resumenQuincena(filas, q.ini, q.fin);
-  const quincenaPrevia = resumenQuincena(filas, qPrev.ini, qPrev.fin);
+  const quincena = resumenQuincena(filas, q.ini, q.fin, jornada);
+  const quincenaPrevia = resumenQuincena(filas, qPrev.ini, qPrev.fin, jornada);
 
   const desdeCierre = diasEntre(qPrev.fin, hoy);
   const faltan =
@@ -552,8 +571,20 @@ export const cargarDashboard = cache(async function cargarDashboard(
   // Un día antes del inicio cae siempre dentro de la quincena anterior.
   const qPrev = quincenaISO(sumarDias(q.ini, -1));
 
-  const quincena = resumenQuincena(mias, q.ini, q.fin);
-  const quincenaPrevia = resumenQuincena(mias, qPrev.ini, qPrev.fin);
+  // La jornada contratada de esta persona, para la meta de la quincena.
+  const jornada = personaId
+    ? Number(
+        (
+          await db.persona.findUnique({
+            where: { id: personaId },
+            select: { horasDia: true },
+          })
+        )?.horasDia ?? 8,
+      )
+    : 8;
+
+  const quincena = resumenQuincena(mias, q.ini, q.fin, jornada);
+  const quincenaPrevia = resumenQuincena(mias, qPrev.ini, qPrev.fin, jornada);
 
   /* --------------- ¿faltan horas de la quincena que ya cerró? ----------- */
   // Se avisa entre 4 y 14 días después del cierre, como hacía el script: antes

@@ -95,8 +95,14 @@ const ST: Record<string, { soft: string; ink: string; label: string }> = {
   pendiente: { soft: "#FDF3DC", ink: "#B07C10", label: "Por aprobar" },
 };
 
-/** Jornada completa de lunes a viernes: la meta contra la que se compara. */
-const META_SEMANA = 40;
+/**
+ * La semana laboral: cinco días de la jornada de CADA persona.
+ *
+ * Era un cuarenta fijo, y hay contratos de cuatro y de cinco horas: a quien
+ * firmó media jornada la barra le pedía el doble de lo que se le contrató y
+ * no llegaba nunca.
+ */
+const metaSemana = (jornada: number) => (jornada > 0 ? jornada : 8) * 5;
 
 /** "8" y no "8.0"; "7.5" cuando hay media hora. */
 const fmt = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(1));
@@ -1033,7 +1039,7 @@ export function ActividadScreen({
               }}
             >
               <span style={{ fontSize: 11, color: "var(--cv-ink-3)" }}>
-                {fmt(total)} de {META_SEMANA} h registradas
+                {fmt(total)} de {fmt(metaSemana(topeDia))} h registradas
               </span>
               <span
                 style={{
@@ -1049,7 +1055,7 @@ export function ActividadScreen({
                   style={{
                     display: "block",
                     height: "100%",
-                    width: `${Math.min(100, Math.round((total / META_SEMANA) * 100))}%`,
+                    width: `${Math.min(100, Math.round((total / metaSemana(topeDia)) * 100))}%`,
                     background:
                       "linear-gradient(90deg, var(--cv-green), var(--cv-teal))",
                     borderRadius: 6,
