@@ -190,3 +190,62 @@ export function tiempoRelativo(ts: number, ahora = Date.now()): string {
     month: "short",
   }).format(new Date(ts));
 }
+
+/**
+ * Los días de asueto oficiales en México, calculados.
+ *
+ * Son los de la Ley Federal del Trabajo, artículo 74: tres de fecha fija
+ * —1 de enero, 1 de mayo, 25 de diciembre—, tres que caen en lunes por el
+ * corrimiento de 2006 —primer lunes de febrero, tercero de marzo, tercero de
+ * noviembre—, el 16 de septiembre, y el 1 de octubre cada seis años cuando
+ * hay transmisión del Poder Ejecutivo.
+ *
+ * Se calculan en vez de listarlos: una lista escrita a mano se queda corta al
+ * cambiar de año y nadie se acuerda de ampliarla. Comprobado contra el
+ * calendario oficial de 2025, 2026 y 2027.
+ *
+ * NO entran aquí los días que la empresa da por su cuenta —puentes, el día
+ * del padre, la cena de fin de año—: esos no son asueto de ley y, si algún
+ * día hacen falta, el sitio es una tabla, no este archivo.
+ */
+export function asuetosDe(anio: number): { iso: string; nombre: string }[] {
+  const p = (n: number) => String(n).padStart(2, "0");
+
+  /** El n-ésimo lunes de un mes: «tercer lunes de marzo» es lunesN(3, 3). */
+  const lunesN = (mes: number, n: number): string => {
+    const d = new Date(Date.UTC(anio, mes - 1, 1));
+    // getUTCDay(): 0 domingo … 1 lunes. Lo que falta para el primer lunes.
+    const hastaLunes = (8 - d.getUTCDay()) % 7;
+    d.setUTCDate(1 + hastaLunes + (n - 1) * 7);
+    return `${anio}-${p(mes)}-${p(d.getUTCDate())}`;
+  };
+
+  const lista = [
+    { iso: `${anio}-01-01`, nombre: "Año Nuevo" },
+    { iso: lunesN(2, 1), nombre: "Día de la Constitución" },
+    { iso: lunesN(3, 3), nombre: "Natalicio de Benito Juárez" },
+    { iso: `${anio}-05-01`, nombre: "Día del Trabajo" },
+    { iso: `${anio}-09-16`, nombre: "Independencia de México" },
+    { iso: lunesN(11, 3), nombre: "Revolución Mexicana" },
+    { iso: `${anio}-12-25`, nombre: "Navidad" },
+  ];
+
+  // 2024, 2030, 2036…: el año en que entra el nuevo Ejecutivo.
+  if ((anio - 2024) % 6 === 0) {
+    lista.push({ iso: `${anio}-10-01`, nombre: "Transmisión del Poder Ejecutivo" });
+  }
+
+  return lista.sort((a, b) => a.iso.localeCompare(b.iso));
+}
+
+/** El nombre del asueto que cae ese día, o `null` si es un día cualquiera. */
+export function asuetoDe(iso: string): string | null {
+  const anio = Number(iso.slice(0, 4));
+  if (!Number.isFinite(anio)) return null;
+  return asuetosDe(anio).find((a) => a.iso === iso)?.nombre ?? null;
+}
+
+/** `true` si ese día es de asueto oficial. */
+export function esAsueto(iso: string): boolean {
+  return asuetoDe(iso) !== null;
+}

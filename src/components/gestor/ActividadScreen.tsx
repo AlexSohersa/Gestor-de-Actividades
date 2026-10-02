@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { asuetoDe } from "@/lib/fechas";
 import {
   AlertCircle,
   Check,
@@ -697,8 +698,26 @@ export function ActividadScreen({
             >
               {fmt(tablero.quincenaPrevia.horas)} h
             </span>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#178A49" }}>
-              cerrada
+            {/*
+              De cuántas, como en la quincena de arriba.
+
+              Decía solo «80 h · cerrada» con una barra gris: el número por sí
+              solo no dice si se completó la quincena o si faltaron ocho horas,
+              que es justo lo que se mira al cerrarla.
+            */}
+            <span style={{ fontSize: 11, color: "var(--cv-ink-4)" }}>
+              de {tablero.quincenaPrevia.meta} h
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                marginLeft: "auto",
+                color:
+                  tablero.quincenaPrevia.avance >= 1 ? "#178A49" : "#B07C10",
+              }}
+            >
+              {tablero.quincenaPrevia.avance >= 1 ? "completa" : "cerrada"}
             </span>
           </span>
           <span
@@ -715,8 +734,13 @@ export function ActividadScreen({
               style={{
                 display: "block",
                 height: "100%",
-                width: `${Math.min(100, Math.round(tablero.quincenaPrevia.avance * 100))}%`,
-                background: "#C8D6E2",
+                width: `${Math.max(3, Math.min(100, Math.round(tablero.quincenaPrevia.avance * 100)))}%`,
+                // Verde cuando se cumplió la meta, ámbar cuando se cerró corta:
+                // el gris no distinguía una quincena completa de una a medias.
+                background:
+                  tablero.quincenaPrevia.avance >= 1
+                    ? "linear-gradient(90deg, var(--cv-green), var(--cv-teal))"
+                    : "#F5B843",
                 borderRadius: 6,
               }}
             />
@@ -1109,6 +1133,15 @@ export function ActividadScreen({
               const faltan = Math.max(0, meta - horasDia);
               const esHoy = clave === hoyISO;
               const futuro = clave > hoyISO;
+              /*
+               * Si ese día es de asueto oficial.
+               *
+               * No bloquea nada: hay quien trabaja un festivo y esas horas son
+               * reales —y se pagan distinto—. Lo que hace falta es que se vea,
+               * para que nadie reporte un 16 de septiembre sin caer en qué día
+               * era, ni se extrañe de que la semana pida menos horas.
+               */
+              const festivo = asuetoDe(clave);
 
               const fechaCorta = new Intl.DateTimeFormat("es-MX", {
                 day: "numeric",
@@ -1147,6 +1180,23 @@ export function ActividadScreen({
                         {nombreDia}
                       </span>
                     </span>
+                    {festivo && (
+                      <span
+                        title={festivo}
+                        style={{
+                          display: "block",
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: "#8A5CC4",
+                          marginTop: 2,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        FESTIVO
+                      </span>
+                    )}
                     <span
                       style={{
                         display: "block",
@@ -2438,13 +2488,46 @@ function FormReporte({
     });
   };
 
+  /*
+   * Cerrar con algo escrito pregunta antes.
+   *
+   * El panel se cerraba con un clic fuera o en la X, y lo llenado se perdía
+   * sin aviso: llenar un día con tres o cuatro registros y tener que empezar
+   * de nuevo por rozar el fondo de la pantalla.
+   *
+   * Se pregunta solo si hay algo que perder —un proyecto elegido o una línea
+   * con horas o entregable—; en un panel recién abierto cierra directo, que
+   * es lo que se espera.
+   */
+  const hayAlgoEscrito =
+    proyecto.trim() !== "" ||
+    lineas.some(
+      (l) =>
+        l.deliverable.trim() !== "" ||
+        (Number(l.hours) || 0) > 0 ||
+        (l.comment ?? "").trim() !== "",
+    );
+
+  const cerrar = () => {
+    if (pendiente) return;
+    if (
+      hayAlgoEscrito &&
+      !window.confirm(
+        "Tienes un reporte sin enviar. Si sales ahora se pierde lo que llevas escrito.\n\n¿Salir de todas formas?",
+      )
+    ) {
+      return;
+    }
+    onClose();
+  };
+
   return (
     <CvPortal>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Reportar horas"
-        onClick={onClose}
+        onClick={cerrar}
         className="cv-fade-in"
         style={velo}
       >
@@ -2456,7 +2539,7 @@ function FormReporte({
           <Cabecera
             rotulo="Reporte diario de actividad"
             titulo={tituloFecha}
-            onClose={onClose}
+            onClose={cerrar}
           />
 
           <div
@@ -2469,6 +2552,35 @@ function FormReporte({
               gap: 15,
             }}
           >
+            {/*
+              Aviso cuando el día elegido es de asueto.
+
+              No impide reportar —hay quien trabaja un festivo, y esas horas
+              son reales y se pagan distinto—, pero sí evita el caso de llenar
+              ocho horas de un 16 de septiembre sin caer en qué día era.
+            */}
+            {asuetoDe(fecha) && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "9px 12px",
+                  borderRadius: 11,
+                  border: "1px solid #E0D0F2",
+                  background: "#FAF6FE",
+                  fontSize: 11.5,
+                  color: "#6B4A9C",
+                }}
+              >
+                <AlertCircle size={14} strokeWidth={2.2} />
+                <span>
+                  <b>{asuetoDe(fecha)}</b> — día de asueto oficial. Si
+                  trabajaste, repórtalo con normalidad.
+                </span>
+              </div>
+            )}
+
             <div
               style={{
                 display: "grid",
@@ -2782,7 +2894,7 @@ function FormReporte({
           </div>
 
           <Pie
-            onClose={onClose}
+            onClose={cerrar}
             onEnviar={enviar}
             pendiente={pendiente}
             etiqueta="Enviar reporte"

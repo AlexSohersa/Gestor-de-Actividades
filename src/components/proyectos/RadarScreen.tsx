@@ -755,25 +755,22 @@ export function RadarScreen({
               presupuesto. Va con barras y no con dona porque son muchos más
               valores que los tres esfuerzos.
             */}
-            <Panel titulo="En qué se fueron las horas">
-              <BarrasSimples
-                partes={d.tipos.slice(0, 10)}
-                total={d.registradas}
-              />
+            <Panel titulo="En qué se fueron las horas" alto={330}>
+              <BarrasSimples partes={d.tipos} total={d.registradas} />
             </Panel>
 
             {/* ------------------------------------ colaboradores ----- */}
-            <Panel titulo={`Horas por colaborador (${d.personas})`}>
-              <BarrasSimples
-                partes={d.colaboradores.slice(0, 12)}
-                total={d.registradas}
-              />
+            <Panel titulo={`Horas por colaborador (${d.personas})`} alto={330}>
+              <BarrasSimples partes={d.colaboradores} total={d.registradas} />
             </Panel>
 
             {/* --------------------------------- entregables, a lo ancho */}
             <div className="cv-radar-ancho">
-              <Panel titulo={`Uso de horas por entregable (${d.entregables.length})`}>
-                <BarrasEntregables items={d.entregables.slice(0, 18)} />
+              <Panel
+                titulo={`Uso de horas por entregable (${d.entregables.length})`}
+                alto={420}
+              >
+                <BarrasEntregables items={d.entregables} />
               </Panel>
             </div>
           </div>
@@ -1099,9 +1096,19 @@ function Cifra({
 function Panel({
   titulo,
   children,
+  /**
+   * Altura máxima del contenido. Lo que no quepa se recorre con la rueda.
+   *
+   * Los paneles enseñaban los doce primeros colaboradores de veintidós y los
+   * diez primeros tipos: el resto no existía para quien mirara la pantalla.
+   * Cortar la lista es peor que dejarla desplazar, porque no avisa de que
+   * falta algo.
+   */
+  alto,
 }: {
   titulo: string;
   children: React.ReactNode;
+  alto?: number;
 }) {
   return (
     <div
@@ -1120,7 +1127,16 @@ function Panel({
       >
         {titulo}
       </span>
-      {children}
+      {alto === undefined ? (
+        children
+      ) : (
+        <div
+          className="cv-scroll"
+          style={{ maxHeight: alto, overflowY: "auto", paddingRight: 6 }}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }
