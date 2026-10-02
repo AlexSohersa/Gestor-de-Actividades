@@ -745,6 +745,23 @@ export function RadarScreen({
               <Dona partes={d.esfuerzos} />
             </Panel>
 
+            {/* ------------------------------------------- tipos ------ */}
+            {/*
+              En qué se fue el tiempo, no solo cuánto.
+
+              Es lo que separa el trabajo del proyecto de lo que no lo es:
+              Hilti 2 lleva 398 h de CAPACITACIÓN cargadas a su código, y sin
+              este reparto se leen como horas de modelado comiéndose el
+              presupuesto. Va con barras y no con dona porque son muchos más
+              valores que los tres esfuerzos.
+            */}
+            <Panel titulo="En qué se fueron las horas">
+              <BarrasSimples
+                partes={d.tipos.slice(0, 10)}
+                total={d.registradas}
+              />
+            </Panel>
+
             {/* ------------------------------------ colaboradores ----- */}
             <Panel titulo={`Horas por colaborador (${d.personas})`}>
               <BarrasSimples

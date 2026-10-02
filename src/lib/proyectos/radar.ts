@@ -74,6 +74,14 @@ export type RadarProyecto = {
   /** La misma serie por mes, para proyectos largos. */
   meses: PuntoMes[];
   esfuerzos: Reparto[];
+  /**
+   * En qué se fue el tiempo: modelado, revisión, capacitación…
+   *
+   * Es lo que distingue el trabajo del proyecto de lo que no lo es. Hilti 2
+   * tiene 398 h de CAPACITACIÓN cargadas, y sin este reparto se leen como si
+   * fueran horas de modelado comiéndose el presupuesto.
+   */
+  tipos: Reparto[];
   colaboradores: Reparto[];
   entregables: EntregableRadar[];
   /** Entregables que ya pasaron de sus horas cotizadas. */
@@ -127,6 +135,7 @@ type FilaRadar = {
   horas: number;
   entregable: string;
   esfuerzo: string | null;
+  tipo: string | null;
   colaborador: string;
 };
 
@@ -265,6 +274,7 @@ export const radarDeProyecto = cache(async function radarDeProyecto(
         fecha: true,
         horas: true,
         esfuerzo: true,
+        tipo: true,
         entregableTexto: true,
         entregable: { select: { nombre: true } },
         persona: { select: { nombre: true } },
@@ -288,6 +298,7 @@ export const radarDeProyecto = cache(async function radarDeProyecto(
     // que nadie dio de alta, se conserva el texto original.
     entregable: f.entregable?.nombre ?? f.entregableTexto ?? "GENERAL",
     esfuerzo: f.esfuerzo,
+    tipo: f.tipo,
     colaborador: f.persona.nombre,
   }));
 
@@ -412,6 +423,7 @@ export const radarDeProyecto = cache(async function radarDeProyecto(
     serie,
     meses: serieMensual,
     esfuerzos: agrupar((f) => f.esfuerzo?.trim() || "SIN CLASIFICAR"),
+    tipos: agrupar((f) => f.tipo?.trim() || "SIN CLASIFICAR"),
     colaboradores: agrupar((f) => f.colaborador),
     entregables,
     pasados: entregables.filter((e) => e.uso !== null && e.uso > 1).length,
