@@ -9,9 +9,16 @@ import { RadarScreen } from "@/components/proyectos/RadarScreen";
 import { SemanalScreen } from "@/components/proyectos/SemanalScreen";
 import { PestanasProyectos } from "@/components/proyectos/PestanasProyectos";
 
-// Un minuto de caché: el radar mira meses de horas y no cambia de un segundo a
-// otro. Es la única pantalla que se puede permitir servirse tibia.
-export const revalidate = 60;
+/*
+ * Sin caché, como el resto de las pantallas.
+ *
+ * Tenía un minuto de margen con el argumento de que el radar mira meses de
+ * horas y no cambia de un segundo a otro. Pero sí cambia: alguien reporta sus
+ * horas, abre el estatus para comprobarlo, y lo ve igual que antes. Y el
+ * ahorro no lo valía —las tres consultas que alimentan la pantalla tardan
+ * menos de 200 ms juntas sobre once mil filas—.
+ */
+export const revalidate = 0;
 
 /**
  * Estatus de proyectos — dos vistas de lo mismo.

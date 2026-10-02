@@ -317,7 +317,17 @@ async function proyectosParaReportar(): Promise<Opcion[]> {
       -- Lo que vive en core, con el estatus de deal cuando lo tiene.
       SELECT
         p.nombre,
-        COALESCE(d.status::text, p.estado) AS estado,
+        /*
+         * El estatus de deal manda, SALVO si aquí está cancelado.
+         *
+         * Cancelar un proyecto en el padrón es lo que se hace al unir un
+         * duplicado: las horas y el presupuesto se mueven al código bueno y
+         * el vacío se retira. Pero el Deal Engine sigue teniéndolo activo
+         * —allá no se unió nada—, así que su estatus lo resucitaba y el
+         * duplicado volvía a aparecer en la lista para reportar.
+         */
+        CASE WHEN p.estado = 'CANCELADO' THEN 'CANCELADO'
+             ELSE COALESCE(d.status::text, p.estado) END AS estado,
         EXISTS (
           SELECT 1 FROM actividad.hora h
            WHERE h.proyecto_codigo = p.codigo
