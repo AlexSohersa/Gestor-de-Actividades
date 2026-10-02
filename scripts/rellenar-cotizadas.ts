@@ -58,6 +58,15 @@ async function main() {
       JOIN deal."DeliverableRoleHours" rh ON rh."deliverableId" = d.id
      WHERE p.proyecto_codigo IS NOT NULL
        AND regexp_replace(COALESCE(d.name,''), '[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]', '', 'g') <> ''
+       /*
+        * Nada para los proyectos retirados.
+        *
+        * Al unir un duplicado, el código vacío queda CANCELADO aquí pero sigue
+        * activo en el Deal Engine —allá no se unió nada—, así que entraba otra
+        * vez por esta puerta y se le escribía un presupuesto que ya está en el
+        * código bueno. Un proyecto que nadie puede elegir no necesita uno.
+        */
+       AND cp.estado <> 'CANCELADO'
        -- Solo los que no tienen NADA: lo curado a mano no se toca.
        AND NOT EXISTS (
          SELECT 1 FROM actividad.hora_cotizada hc
