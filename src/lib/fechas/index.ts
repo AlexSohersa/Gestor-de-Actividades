@@ -110,30 +110,42 @@ export function semanaDesde(lunesISO: string): string[] {
   return Array.from({ length: 7 }, (_, i) => sumarDias(lunesISO, i));
 }
 
-/// Días hábiles (lunes a viernes) entre dos fechas, ambas incluidas.
-///
-/// No contempla días de asueto: el gestor antiguo tampoco lo hacía, y el
-/// calendario oficial vive en una hoja aparte (BDD ASUETOS) que aún no se
-/// migra. Ver docs/DEUDAS.md.
+/**
+ * Días laborables entre dos fechas, ambas incluidas.
+ *
+ * Fuera los fines de semana Y los días de asueto oficial: un 16 de septiembre
+ * no se trabaja, así que pedir sus ocho horas deja la quincena corta por un
+ * trabajo que nadie debía hacer. La quincena del 16 al 30 de septiembre de
+ * 2026 pasa de 88 h a 80 h, que es lo que de verdad se pide.
+ *
+ * Quien sí trabaje un festivo lo reporta igual —se ve en la semana con su
+ * etiqueta— y esas horas suman por encima de la meta, como debe ser.
+ */
 export function diasHabiles(desdeISO: string, hastaISO: string): number {
   let n = 0;
   let cursor = desdeISO;
   while (cursor <= hastaISO) {
-    if (!esFinDeSemana(cursor)) n++;
+    if (!esFinDeSemana(cursor) && !esAsueto(cursor)) n++;
     cursor = sumarDias(cursor, 1);
   }
   return n;
 }
 
-/// Cada día hábil entre dos fechas, ambas incluidas.
-///
-/// Si el rango entero cae en fin de semana devuelve el día de inicio, para que
-/// una ausencia de un sábado no desaparezca sin dejar rastro.
+/**
+ * Cada día laborable entre dos fechas, ambas incluidas.
+ *
+ * Mismo criterio: ni fines de semana ni asuetos. Es lo que cuenta los días de
+ * unas vacaciones, así que pedir del 14 al 18 de septiembre descuenta cuatro
+ * días del saldo y no cinco —el 16 es festivo y no se gasta—.
+ *
+ * Si el rango entero cae en días no laborables devuelve el día de inicio, para
+ * que una ausencia de un sábado no desaparezca sin dejar rastro.
+ */
 export function diasHabilesEntre(desdeISO: string, hastaISO: string): string[] {
   const dias: string[] = [];
   let cursor = desdeISO;
   while (cursor <= hastaISO) {
-    if (!esFinDeSemana(cursor)) dias.push(cursor);
+    if (!esFinDeSemana(cursor) && !esAsueto(cursor)) dias.push(cursor);
     cursor = sumarDias(cursor, 1);
   }
   return dias.length > 0 ? dias : [desdeISO];

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { asuetoDe } from "@/lib/fechas";
+import { asuetoDe, diasHabiles, sumarDias } from "@/lib/fechas";
 import {
   AlertCircle,
   Check,
@@ -103,7 +103,16 @@ const ST: Record<string, { soft: string; ink: string; label: string }> = {
  * firmó media jornada la barra le pedía el doble de lo que se le contrató y
  * no llegaba nunca.
  */
-const metaSemana = (jornada: number) => (jornada > 0 ? jornada : 8) * 5;
+/**
+ * Lo que se pide esa semana: sus días laborables por la jornada.
+ *
+ * Era un «× 5» fijo, y una semana con festivo no tiene cinco días de trabajo:
+ * la del 14 al 18 de septiembre pide 32 h y no 40, porque el miércoles 16 es
+ * asueto. Pedir las cuarenta dejaba la barra corta por un día que nadie
+ * trabajaba.
+ */
+const metaSemana = (jornada: number, lunesISO: string) =>
+  (jornada > 0 ? jornada : 8) * diasHabiles(lunesISO, sumarDias(lunesISO, 4));
 
 /** "8" y no "8.0"; "7.5" cuando hay media hora. */
 const fmt = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(1));
@@ -1063,7 +1072,7 @@ export function ActividadScreen({
               }}
             >
               <span style={{ fontSize: 11, color: "var(--cv-ink-3)" }}>
-                {fmt(total)} de {fmt(metaSemana(topeDia))} h registradas
+                {fmt(total)} de {fmt(metaSemana(topeDia, lunesISO))} h registradas
               </span>
               <span
                 style={{
@@ -1079,7 +1088,7 @@ export function ActividadScreen({
                   style={{
                     display: "block",
                     height: "100%",
-                    width: `${Math.min(100, Math.round((total / metaSemana(topeDia)) * 100))}%`,
+                    width: `${Math.min(100, Math.round((total / metaSemana(topeDia, lunesISO)) * 100))}%`,
                     background:
                       "linear-gradient(90deg, var(--cv-green), var(--cv-teal))",
                     borderRadius: 6,
@@ -1128,11 +1137,6 @@ export function ActividadScreen({
                * La meta es la jornada de CADA persona, no un 8 fijo: quien
                * trabaja media jornada tiene su día completo con la mitad.
                */
-              const meta = topeDia > 0 ? topeDia : 8;
-              const completo = horasDia >= meta;
-              const faltan = Math.max(0, meta - horasDia);
-              const esHoy = clave === hoyISO;
-              const futuro = clave > hoyISO;
               /*
                * Si ese día es de asueto oficial.
                *
@@ -1142,6 +1146,18 @@ export function ActividadScreen({
                * era, ni se extrañe de que la semana pida menos horas.
                */
               const festivo = asuetoDe(clave);
+              const meta = topeDia > 0 ? topeDia : 8;
+              /*
+               * En un festivo no se pide nada.
+               *
+               * Si no, el día salía en ámbar con «faltan 8 h» por un trabajo
+               * que nadie debía hacer. Quien sí trabajó ese día ve sus horas
+               * con normalidad, y cuentan por encima de la meta de la semana.
+               */
+              const completo = festivo ? true : horasDia >= meta;
+              const faltan = festivo ? 0 : Math.max(0, meta - horasDia);
+              const esHoy = clave === hoyISO;
+              const futuro = clave > hoyISO;
 
               const fechaCorta = new Intl.DateTimeFormat("es-MX", {
                 day: "numeric",
@@ -1159,7 +1175,18 @@ export function ActividadScreen({
                     padding: "12px 16px",
                     borderTop: i > 0 ? "1px solid var(--cv-row-line)" : "none",
                     alignItems: "flex-start",
-                    background: esHoy ? "#F7FCF9" : "#fff",
+                    /*
+                     * El día de asueto se lee de lejos.
+                     *
+                     * Solo con la etiqueta pequeña bajo la fecha se perdía
+                     * entre las demás filas. Un fondo muy tenue y una franja
+                     * en el canto lo separan sin mover nada de sitio ni tapar
+                     * lo que haya reportado quien sí trabajó ese día.
+                     */
+                    background: festivo ? "#FBF8FE" : esHoy ? "#F7FCF9" : "#fff",
+                    borderLeft: festivo
+                      ? "3px solid #B992E8"
+                      : "3px solid transparent",
                   }}
                 >
                   <span style={{ width: 80, flexShrink: 0, paddingTop: 2 }}>
@@ -1184,11 +1211,16 @@ export function ActividadScreen({
                       <span
                         title={festivo}
                         style={{
-                          display: "block",
-                          fontSize: 9,
+                          display: "inline-block",
+                          fontSize: 8.5,
                           fontWeight: 700,
-                          color: "#8A5CC4",
-                          marginTop: 2,
+                          letterSpacing: ".04em",
+                          color: "#fff",
+                          background: "#8A5CC4",
+                          borderRadius: 5,
+                          padding: "2px 6px",
+                          marginTop: 4,
+                          maxWidth: "100%",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
@@ -1565,13 +1597,17 @@ export function ActividadScreen({
                     >
                       {futuro
                         ? ""
-                        : horasDia === 0
-                          ? "falta"
-                          : horasDia > meta
-                            ? "con extra"
-                            : completo
-                              ? `de ${fmt(meta)} h`
-                              : `faltan ${fmt(faltan)} h`}
+                        : festivo
+                          ? horasDia > 0
+                            ? "en festivo"
+                            : "no laborable"
+                          : horasDia === 0
+                            ? "falta"
+                            : horasDia > meta
+                              ? "con extra"
+                              : completo
+                                ? `de ${fmt(meta)} h`
+                                : `faltan ${fmt(faltan)} h`}
                     </span>
                   </span>
                 </div>
